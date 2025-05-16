@@ -9,7 +9,7 @@
   },
   "auto_style_design": {
     "description": "自动设计多种视频风格",
-    "template": "作为一名创意视频策划专家，请为以下知识内容设计{num_styles}种不同的视频呈现风格。每种风格都应该独特且适合这个主题，能够以不同的方式吸引不同类型的观众。\n\n搜索查询：{search_query}\n\n意图分析：{intent_analysis}\n\n知识内容概要：{knowledge_content}\n\n请设计{num_styles}种不同的视频风格，每种风格都应该包含：\n1. 风格名称 - 简短而具描述性\n2. 风格描述 - 这种风格的核心特点和吸引力\n3. 适合的受众群体\n4. 视觉表现特点\n5. 叙事方式特点\n\n请以JSON格式输出，格式如下：\n```json\n[\n  {\n    \"name\": \"风格名称1\",\n    \"description\": \"风格详细描述\",\n    \"target_audience\": \"适合的受众\",\n    \"visual_characteristics\": \"视觉特点\",\n    \"narrative_approach\": \"叙事方式\"\n  },\n  // 更多风格...\n]\n```\n\n确保这些风格各不相同，能够以不同的角度和方式呈现同一知识内容，让用户有多样化的选择。"
+    "template": "作为一名创意视频策划专家，请为以下知识内容设计{num_styles}种不同的视频呈现风格。每种风格都应该独特且适合这个主题，能够以不同的方式吸引不同类型的观众。\n\n搜索查询：{search_query}\n\n意图分析：{intent_analysis}\n\n知识内容概要：{knowledge_content}\n\n请设计{num_styles}种不同的视频风格，每种风格都应该包含：\n1. 风格名称 - 简短而具描述性\n2. 风格描述 - 这种风格的核心特点和吸引力\n3. 适合的受众群体\n4. 视觉表现特点\n5. 叙事方式特点\n\n非常重要：请严格按照以下JSON格式输出，不要有任何其他文字说明：\n[\n  {\n    \"name\": \"风格名称1\",\n    \"description\": \"风格详细描述\",\n    \"target_audience\": \"适合的受众\",\n    \"visual_characteristics\": \"视觉特点\",\n    \"narrative_approach\": \"叙事方式\"\n  },\n  {\n    \"name\": \"风格名称2\",\n    \"description\": \"风格详细描述\",\n    \"target_audience\": \"适合的受众\",\n    \"visual_characteristics\": \"视觉特点\",\n    \"narrative_approach\": \"叙事方式\"\n  },\n  {\n    \"name\": \"风格名称3\",\n    \"description\": \"风格详细描述\",\n    \"target_audience\": \"适合的受众\",\n    \"visual_characteristics\": \"视觉特点\",\n    \"narrative_approach\": \"叙事方式\"\n  }\n]"
   },
   "video_script_generation": {
     "description": "生成知识性视频脚本",

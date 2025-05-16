@@ -2,6 +2,7 @@ import json
 import argparse
 import os
 import time
+import re
 from openai import OpenAI
 from typing import Dict, List, Any
 import uuid
@@ -72,6 +73,64 @@ class KnowledgeVideoGenerator:
         except Exception as e:
             print(f"OpenAI API调用失败: {e}")
             return ""
+    
+    def extract_json_from_text(self, text: str) -> str:
+        """从文本中提取JSON数据
+        
+        Args:
+            text: 可能包含JSON的文本
+            
+        Returns:
+            提取出的JSON字符串
+        """
+        # 尝试几种常见的JSON提取模式
+        
+        # 模式1: 提取被```json和```包围的内容
+        json_pattern1 = r"```json\s*([\s\S]*?)\s*```"
+        matches = re.search(json_pattern1, text)
+        if matches:
+            return matches.group(1).strip()
+        
+        # 模式2: 提取被```包围的内容
+        json_pattern2 = r"```\s*([\s\S]*?)\s*```"
+        matches = re.search(json_pattern2, text)
+        if matches:
+            return matches.group(1).strip()
+        
+        # 模式3: 寻找[{开头和}]结尾的内容
+        json_pattern3 = r"(\[\s*\{[\s\S]*\}\s*\])"
+        matches = re.search(json_pattern3, text)
+        if matches:
+            return matches.group(1).strip()
+        
+        # 模式4: 寻找{开头和}结尾的内容
+        json_pattern4 = r"(\{\s*[\s\S]*\}\s*)"
+        matches = re.search(json_pattern4, text)
+        if matches:
+            return matches.group(1).strip()
+            
+        # 如果上述都失败，返回原文本
+        return text
+    
+    def parse_json_safely(self, text: str) -> Any:
+        """安全地解析JSON文本
+        
+        Args:
+            text: JSON文本
+            
+        Returns:
+            解析后的Python对象
+        """
+        try:
+            # 尝试从文本中提取JSON
+            json_str = self.extract_json_from_text(text)
+            
+            # 尝试解析JSON
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"JSON解析失败: {e}")
+            print("问题文本:", text[:200] + "..." if len(text) > 200 else text)
+            return None
     
     def format_prompt(self, prompt_id: str, input_values: Dict[str, Any]) -> str:
         """根据模板和输入值格式化prompt
@@ -178,8 +237,13 @@ class KnowledgeVideoGenerator:
         
         # 尝试解析JSON风格定义
         try:
-            style_designs = json.loads(style_design_result["output"])
+            # 使用安全的JSON解析
+            style_designs = self.parse_json_safely(style_design_result["output"])
             
+            if not style_designs:
+                # 解析失败，生成默认风格
+                raise ValueError("无法解析风格定义")
+                
             if not isinstance(style_designs, list):
                 # 如果不是列表，尝试提取styles字段
                 if isinstance(style_designs, dict) and "styles" in style_designs:
@@ -269,67 +333,97 @@ class KnowledgeVideoGenerator:
                 
         except Exception as e:
             print(f"处理风格设计时出错: {e}")
-            print("将生成单一风格的视频")
+            print("将生成预定义的多种风格视频")
             
-            # 如果风格解析失败，退回到单一风格
-            script_result = self.process_task(
-                "video_script_generation",
+            # 如果风格解析失败，使用预定义的风格列表
+            predefined_styles = [
                 {
-                    "search_query": search_query,
-                    "knowledge_content": knowledge_result["output"],
-                    "style_name": "通用教育型",
-                    "style_description": "清晰、信息丰富、适合广泛受众的知识内容呈现"
+                    "name": "传统文化解析",
+                    "description": "以清晰、权威的方式讲解春联的历史文化背景，强调知识性和教育价值"
                 },
-                max_tokens=3000,
-                temperature=0.7
-            )
-            
-            storyboard_result = self.process_task(
-                "storyboard_design",
                 {
-                    "video_script": script_result["output"],
-                    "style_name": "通用教育型",
-                    "style_description": "清晰、信息丰富、适合广泛受众的知识内容呈现"
+                    "name": "生活场景体验",
+                    "description": "通过生活化的场景和温暖的氛围，展示春联在现代生活中的应用和意义"
                 },
-                max_tokens=3000,
-                temperature=0.7
-            )
-            
-            visual_audio_result = self.process_task(
-                "visual_audio_design",
                 {
-                    "search_query": search_query,
-                    "video_script": script_result["output"],
-                    "style_name": "通用教育型",
-                    "style_description": "清晰、信息丰富、适合广泛受众的知识内容呈现"
-                },
-                max_tokens=1500,
-                temperature=0.7
-            )
+                    "name": "视觉艺术探索",
+                    "description": "关注春联的艺术性和视觉美感，通过精美的书法和设计展示其审美价值"
+                }
+            ]
             
-            synthesis_result = self.process_task(
-                "video_synthesis_instructions",
-                {
-                    "search_query": search_query,
-                    "storyboard": storyboard_result["output"],
-                    "visual_audio_design": visual_audio_result["output"],
-                    "style_name": "通用教育型",
-                    "style_description": "清晰、信息丰富、适合广泛受众的知识内容呈现"
-                },
-                max_tokens=2000,
-                temperature=0.7
-            )
+            # 确保样式数量不超过要求
+            num_predefined = min(len(predefined_styles), num_styles)
             
-            results["style_variations"] = [{
-                "style_info": {
-                    "name": "通用教育型",
-                    "description": "清晰、信息丰富、适合广泛受众的知识内容呈现"
-                },
-                "video_script": script_result,
-                "storyboard": storyboard_result,
-                "visual_audio_design": visual_audio_result,
-                "synthesis_instructions": synthesis_result
-            }]
+            results["style_variations"] = []
+            for i in range(num_predefined):
+                style = predefined_styles[i]
+                style_name = style["name"]
+                style_description = style["description"]
+                
+                print(f"\n生成 '{style_name}' 风格的视频方案...")
+                
+                # 给每个风格设置略微不同的温度
+                temp_variation = 0.6 + (i * 0.1) % 0.3
+                
+                # 为该风格生成内容
+                script_result = self.process_task(
+                    "video_script_generation",
+                    {
+                        "search_query": search_query,
+                        "knowledge_content": knowledge_result["output"],
+                        "style_name": style_name,
+                        "style_description": style_description
+                    },
+                    max_tokens=3000,
+                    temperature=temp_variation
+                )
+                
+                storyboard_result = self.process_task(
+                    "storyboard_design",
+                    {
+                        "video_script": script_result["output"],
+                        "style_name": style_name,
+                        "style_description": style_description
+                    },
+                    max_tokens=3000,
+                    temperature=temp_variation
+                )
+                
+                visual_audio_result = self.process_task(
+                    "visual_audio_design",
+                    {
+                        "search_query": search_query,
+                        "video_script": script_result["output"],
+                        "style_name": style_name,
+                        "style_description": style_description
+                    },
+                    max_tokens=1500,
+                    temperature=temp_variation
+                )
+                
+                synthesis_result = self.process_task(
+                    "video_synthesis_instructions",
+                    {
+                        "search_query": search_query,
+                        "storyboard": storyboard_result["output"],
+                        "visual_audio_design": visual_audio_result["output"],
+                        "style_name": style_name,
+                        "style_description": style_description
+                    },
+                    max_tokens=2000,
+                    temperature=temp_variation
+                )
+                
+                results["style_variations"].append({
+                    "style_info": {
+                        "name": style_name,
+                        "description": style_description
+                    },
+                    "video_script": script_result,
+                    "storyboard": storyboard_result,
+                    "visual_audio_design": visual_audio_result,
+                    "synthesis_instructions": synthesis_result
+                })
         
         return results
 
