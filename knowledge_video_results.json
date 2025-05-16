@@ -1,0 +1,151 @@
+{
+  "search_query": "春节贴春联的由来和寓意",
+  "intent_analysis": {
+    "task_type": "search_intent_analysis",
+    "input": {
+      "search_query": "春节贴春联的由来和寓意"
+    },
+    "output": "",
+    "time_taken": 8.678436279296875e-05
+  },
+  "knowledge_content": {
+    "task_type": "knowledge_research",
+    "input": {
+      "search_query": "春节贴春联的由来和寓意",
+      "intent_analysis": ""
+    },
+    "output": "",
+    "time_taken": 6.008148193359375e-05
+  },
+  "style_variations": [
+    {
+      "style_name": "教育详实型",
+      "video_script": {
+        "task_type": "video_script_generation",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "knowledge_content": "",
+          "style_variation": "教育详实型"
+        },
+        "output": "",
+        "time_taken": 6.914138793945312e-05
+      },
+      "storyboard": {
+        "task_type": "storyboard_design",
+        "input": {
+          "video_script": "",
+          "style_variation": "教育详实型"
+        },
+        "output": "",
+        "time_taken": 3.075599670410156e-05
+      },
+      "style_design": {
+        "task_type": "style_design",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "video_script": "",
+          "style_variation": "教育详实型"
+        },
+        "output": "",
+        "time_taken": 3.790855407714844e-05
+      },
+      "synthesis_instructions": {
+        "task_type": "video_synthesis_instructions",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "storyboard": "",
+          "style_design": "",
+          "style_variation": "教育详实型"
+        },
+        "output": "",
+        "time_taken": 3.0517578125e-05
+      }
+    },
+    {
+      "style_name": "生动活泼型",
+      "video_script": {
+        "task_type": "video_script_generation",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "knowledge_content": "",
+          "style_variation": "生动活泼型"
+        },
+        "output": "",
+        "time_taken": 2.5510787963867188e-05
+      },
+      "storyboard": {
+        "task_type": "storyboard_design",
+        "input": {
+          "video_script": "",
+          "style_variation": "生动活泼型"
+        },
+        "output": "",
+        "time_taken": 1.52587890625e-05
+      },
+      "style_design": {
+        "task_type": "style_design",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "video_script": "",
+          "style_variation": "生动活泼型"
+        },
+        "output": "",
+        "time_taken": 2.7179718017578125e-05
+      },
+      "synthesis_instructions": {
+        "task_type": "video_synthesis_instructions",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "storyboard": "",
+          "style_design": "",
+          "style_variation": "生动活泼型"
+        },
+        "output": "",
+        "time_taken": 2.4557113647460938e-05
+      }
+    },
+    {
+      "style_name": "创意故事型",
+      "video_script": {
+        "task_type": "video_script_generation",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "knowledge_content": "",
+          "style_variation": "创意故事型"
+        },
+        "output": "",
+        "time_taken": 3.743171691894531e-05
+      },
+      "storyboard": {
+        "task_type": "storyboard_design",
+        "input": {
+          "video_script": "",
+          "style_variation": "创意故事型"
+        },
+        "output": "",
+        "time_taken": 3.838539123535156e-05
+      },
+      "style_design": {
+        "task_type": "style_design",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "video_script": "",
+          "style_variation": "创意故事型"
+        },
+        "output": "",
+        "time_taken": 4.1484832763671875e-05
+      },
+      "synthesis_instructions": {
+        "task_type": "video_synthesis_instructions",
+        "input": {
+          "search_query": "春节贴春联的由来和寓意",
+          "storyboard": "",
+          "style_design": "",
+          "style_variation": "创意故事型"
+        },
+        "output": "",
+        "time_taken": 3.719329833984375e-05
+      }
+    }
+  ]
+}
