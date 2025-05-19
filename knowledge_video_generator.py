@@ -187,6 +187,67 @@ class KnowledgeVideoGenerator:
             "output": result,
             "time_taken": end_time - start_time
         }
+        
+    def generate_video_description_and_script(self, search_query: str, temperature: float = 0.7) -> Dict[str, str]:
+        """根据搜索查询生成整段式视频描述和口播台词
+        
+        Args:
+            search_query: 用户搜索查询
+            temperature: 生成温度
+            
+        Returns:
+            包含视频描述和口播台词的字典
+        """
+        print(f"\n开始为搜索查询 '{search_query}' 生成视频描述和口播台词...")
+        
+        # 1. 搜索意图分析
+        intent_result = self.process_task(
+            "search_intent_analysis",
+            {"search_query": search_query},
+            max_tokens=1500,
+            temperature=0.7
+        )
+        
+        # 2. 知识内容研究与拓展
+        knowledge_result = self.process_task(
+            "knowledge_research",
+            {
+                "search_query": search_query,
+                "intent_analysis": intent_result["output"]
+            },
+            max_tokens=2500,
+            temperature=0.7
+        )
+        
+        # 3. 生成视频描述和口播台词
+        desc_result = self.process_task(
+            "video_description_and_script",
+            {
+                "search_query": search_query,
+                "intent_analysis": intent_result["output"],
+                "knowledge_content": knowledge_result["output"]
+            },
+            max_tokens=3000,
+            temperature=temperature
+        )
+        
+        # 提取视频描述和口播台词
+        result = desc_result["output"]
+        video_description_match = re.search(r"【视频描述】\s*([\s\S]*?)(?=\n【口播台词】|\Z)", result)
+        script_match = re.search(r"【口播台词】\s*([\s\S]*)", result)
+        
+        video_description = video_description_match.group(1).strip() if video_description_match else ""
+        script = script_match.group(1).strip() if script_match else ""
+        
+        return {
+            "search_query": search_query,
+            "intent_analysis": intent_result,
+            "knowledge_content": knowledge_result,
+            "description_result": desc_result,
+            "video_description": video_description,
+            "script": script
+        }
+
     
     def auto_generate_styles(self, search_query: str, num_styles: int = 3) -> Dict[str, Any]:
         """自动设计并生成多种不同风格的视频
@@ -436,6 +497,7 @@ def main():
     parser.add_argument("--search", required=True, help="搜索查询词")
     parser.add_argument("--output", default="knowledge_video_results.json", help="结果输出文件")
     parser.add_argument("--styles", type=int, default=3, help="要生成的风格数量")
+    parser.add_argument("--single_desc", action="store_true", help="生成整段式视频描述和口播台词，而非多风格视频")
     
     args = parser.parse_args()
     
@@ -446,29 +508,51 @@ def main():
     )
     generator.load_prompts(args.prompts)
     
-    results = generator.auto_generate_styles(args.search, args.styles)
-    
-    # 保存结果
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-        
-    print(f"\n处理完成! 结果已保存至: {args.output}")
-    
     # 创建输出文件夹
     output_dir = os.path.splitext(args.output)[0]
     os.makedirs(output_dir, exist_ok=True)
     
-    # 将每个风格的合成指令单独保存为文件，方便查看
-    for i, style_variation in enumerate(results["style_variations"]):
-        style_name = style_variation["style_info"]["name"].replace(" ", "_")
-        style_file = f"{output_dir}/{style_name}_instructions.txt"
+    if args.single_desc:
+        # 使用新功能生成单一整段式视频描述和口播台词
+        results = generator.generate_video_description_and_script(args.search)
         
-        with open(style_file, "w", encoding="utf-8") as f:
-            f.write(f"# {style_variation['style_info']['name']} - 视频合成指令\n\n")
-            f.write(f"风格描述: {style_variation['style_info']['description']}\n\n")
-            f.write(style_variation["synthesis_instructions"]["output"])
+        # 保存结果 JSON
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        
+        # 保存人类易读格式
+        readable_output = f"{output_dir}/video_description_and_script.txt"
+        with open(readable_output, "w", encoding="utf-8") as f:
+            f.write(f"# 搜索查询：{args.search}\n\n")
+            f.write("## 视频描述\n\n")
+            f.write(results["video_description"])
+            f.write("\n\n## 口播台词\n\n")
+            f.write(results["script"])
+        
+        print(f"\n处理完成! 视频描述和口播台词已保存至: {readable_output}")
+    
+    else:
+        # 原有的多风格视频生成逻辑
+        results = generator.auto_generate_styles(args.search, args.styles)
+        
+        # 保存结果
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
             
-        print(f"风格 '{style_variation['style_info']['name']}' 的指令已保存至: {style_file}")
+        print(f"\n处理完成! 结果已保存至: {args.output}")
+        
+        # 将每个风格的合成指令单独保存为文件，方便查看
+        for i, style_variation in enumerate(results["style_variations"]):
+            style_name = style_variation["style_info"]["name"].replace(" ", "_")
+            style_file = f"{output_dir}/{style_name}_instructions.txt"
+            
+            with open(style_file, "w", encoding="utf-8") as f:
+                f.write(f"# {style_variation['style_info']['name']} - 视频合成指令\n\n")
+                f.write(f"风格描述: {style_variation['style_info']['description']}\n\n")
+                f.write(style_variation["synthesis_instructions"]["output"])
+                
+            print(f"风格 '{style_variation['style_info']['name']}' 的指令已保存至: {style_file}")
+
 
 if __name__ == "__main__":
     main()
