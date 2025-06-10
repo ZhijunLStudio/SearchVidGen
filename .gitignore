@@ -1,3 +1,8 @@
 knowledge_video_results
 results
 command.txt
+kokoro-main/
+generated_video_content/
+img/
+src/__pycache__/
+src/models/__pycache__/
