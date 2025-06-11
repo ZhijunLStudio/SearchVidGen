@@ -4,5 +4,4 @@ command.txt
 kokoro-main/
 generated_video_content/
 img/
-src/__pycache__/
-src/models/__pycache__/
+**/__pycache__/
