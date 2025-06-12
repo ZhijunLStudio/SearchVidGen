@@ -281,7 +281,7 @@ class LLMClient:
 if __name__ == "__main__":
     client = LLMClient()
     # Using "如何学习Python编程" as an example search query
-    search_query_example = "卡皮巴拉的一天"
+    search_query_example = "打工人的一天"
     output_result = client.generate_video_content(search_query_example, output_base_dir="generated_video_content")
 
     if output_result["success"]:

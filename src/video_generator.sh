@@ -6,7 +6,7 @@ set -e # Exit immediately if a command exits with a non-zero status
 
 # Base directory where your LLMClient output folders are located
 # This should point DIRECTLY to the specific content folder.
-LLM_OUTPUT_BASE_DIR="/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉的一天_20250612_163521"
+LLM_OUTPUT_BASE_DIR="/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/打工人的一天_20250612_220505"
 
 # Path to your Wan-AI video generation model checkpoint directory
 VIDEO_MODEL_PATH="/data/home/lizhijun/llm/flux-hf/model/Wan-AI/Wan2.1-I2V-14B-480P"
@@ -15,10 +15,8 @@ VIDEO_MODEL_PATH="/data/home/lizhijun/llm/flux-hf/model/Wan-AI/Wan2.1-I2V-14B-48
 VIDEO_SIZE="832*480"
 
 # DARGS for generate.py (space-separated, no quotes needed here)
-DARGS="--dit_fsdp --t5_fsdp --ring_size 4 --sample_shift 8 --sample_guide_scale 6"
+DARGS="--dit_fsdp --t5_fsdp --ring_size 4 --sample_shift 4 --sample_guide_scale 6"
 
-# Default seed (can be fixed or removed if not needed by generate.py)
-BASE_SEED=42
 
 # --- End Configuration Section ---
 
@@ -114,7 +112,6 @@ for i in $(seq 0 $((NUM_SCENES - 1))); do
       --image "$IMG_PATH" \
       --prompt "$PROMPT" \
       --save_file "$OUTPUT_FILE" \
-      --base_seed "$BASE_SEED" \
       $DARGS
       
     if [ $? -eq 0 ]; then
