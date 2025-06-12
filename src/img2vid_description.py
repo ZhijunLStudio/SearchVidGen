@@ -8,6 +8,8 @@ generate_img2vid_prompts.py
   - 遍历指定文件夹下 generated_images/ 子目录中的所有图片（按文件名排序）
   - 针对每张图片，仅根据图像内容，调用 OpenAI o4-mini 模型
     生成一条自然流畅的英文描述，突出主体、场景与动作（不要使用标签或“Subject:”“Scene:”等固定格式，也不要提及时间/时长）
+  - 如果调用失败，最多重试3次，每次失败后指数退避
+  - 支持并发处理，默认4个 workers，可通过 --workers 调整
   - 实时将每条 prompt 追加写入 img2vid_video_prompts.txt，并立即 flush，避免中途丢失
   - 显示进度条
 
@@ -16,16 +18,19 @@ generate_img2vid_prompts.py
   python generate_img2vid_prompts.py \
     --api_key sk-... \
     --base_url https://api.openai-proxy.org/v1 \
-    --folder /path/to/your/folder
+    --folder /path/to/your/folder \
+    [--workers 4]
 """
 
 import os
 import argparse
 import base64
+import time
 from io import BytesIO
 from PIL import Image
 from openai import OpenAI
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def encode_image_to_datauri(img: Image.Image) -> str:
     buf = BytesIO()
@@ -35,10 +40,12 @@ def encode_image_to_datauri(img: Image.Image) -> str:
 
 def build_instruction() -> str:
     return (
-        "You are shown an image. Based only on what you see, imagine what happens next. "
-        "Write one concise English sentence or two that naturally describe the main focus, "
-        "the setting around it, and the action or movement taking place. "
-        "Do not use labels, bullet points, or mention time or duration."
+        "You are shown a single image. Based solely on its visual details, "
+        "write one cohesive English paragraph of at least 50 words describing "
+        "exactly what actions the people in the scene are performing or are about to perform. "
+        "Focus on their movements, gestures, facial expressions, interactions with objects or each other, "
+        "and how the environment responds (e.g. wind, light, surfaces). "
+        "Do NOT use bullet points, labels (like “Subject:” or “Scene:”), or mention time spans or durations."
     )
 
 def main():
@@ -50,6 +57,10 @@ def main():
     parser.add_argument(
         "--folder", "-f", required=True,
         help="输入/输出目录，内含 generated_images/ 子目录"
+    )
+    parser.add_argument(
+        "--workers", "-w", type=int, default=4,
+        help="并发 workers 数量，默认 4"
     )
     args = parser.parse_args()
 
@@ -74,39 +85,55 @@ def main():
     with open(output_txt, "w", encoding="utf-8") as fo:
         pass
 
-    # 逐张生成并写入
-    with open(output_txt, "a", encoding="utf-8") as fo:
-        for img_name in tqdm(img_files, desc="Processing images"):
-            img_path = os.path.join(images_dir, img_name)
-            try:
-                img = Image.open(img_path).convert("RGB")
-                datauri = encode_image_to_datauri(img)
-            except Exception as e:
-                print(f"[ERROR] 无法打开图片 {img_name}: {e}")
-                fo.write("\n")
-                fo.flush()
-                continue
+    def process_image(img_name: str) -> str:
+        """
+        打开图片、编码、调用 API，最多重试 3 次，返回生成的文字（失败时返回空字符串）
+        """
+        img_path = os.path.join(images_dir, img_name)
+        try:
+            img = Image.open(img_path).convert("RGB")
+            datauri = encode_image_to_datauri(img)
+        except Exception as e:
+            print(f"[ERROR] 无法打开图片 {img_name}: {e}")
+            return ""
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": instruction},
-                        {"type": "image_url", "image_url": {"url": datauri, "detail": "high"}}
-                    ]
-                }
-            ]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": instruction},
+                    {"type": "image_url", "image_url": {"url": datauri, "detail": "high"}}
+                ]
+            }
+        ]
+
+        text = ""
+        for attempt in range(1, 4):
             try:
                 resp = client.chat.completions.create(
                     model="o4-mini",
                     messages=messages
                 )
                 text = resp.choices[0].message.content.strip().replace("\n", " ")
+                break
             except Exception as e:
-                print(f"[WARN] 模型调用失败 {img_name}: {e}")
-                text = ""
+                # 429/其他错误统一重试
+                wait = 2 ** attempt
+                print(f"[WARN] 调用失败 {img_name} (尝试第 {attempt} 次): {e}，{wait}s 后重试")
+                time.sleep(wait)
+        else:
+            print(f"[ERROR] {img_name} 超过最大重试次数，跳过。")
 
-            # 实时写入并 flush
+        return text
+
+    # 并发调用并保持原有顺序写入
+    with ThreadPoolExecutor(max_workers=args.workers) as executor, \
+         open(output_txt, "a", encoding="utf-8") as fo:
+
+        # executor.map 会保持结果顺序
+        for text in tqdm(executor.map(process_image, img_files),
+                         total=len(img_files),
+                         desc="Processing images"):
             fo.write(text + "\n")
             fo.flush()
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e # Exit immediately if a command exits with a non-zero status
+set -e  # Exit immediately if a command exits with a non-zero status
 
 # --- Configuration Section ---
 # IMPORTANT: Adjust these paths and parameters as needed!
@@ -16,7 +16,6 @@ VIDEO_SIZE="832*480"
 
 # DARGS for generate.py (space-separated, no quotes needed here)
 DARGS="--dit_fsdp --t5_fsdp --ring_size 4 --sample_shift 4 --sample_guide_scale 6"
-
 
 # --- End Configuration Section ---
 
@@ -46,14 +45,15 @@ mkdir -p "$OUTPUT_VIDEOS_DIR"
 echo "Generated videos will be saved to: '$OUTPUT_VIDEOS_DIR'"
 
 # --- Load Video Generation Prompts ---
-PROMPTS_FILE="$INPUT_CONTENT_DIR/img2vid_prompts.txt"
+PROMPTS_FILE="$INPUT_CONTENT_DIR/img2vid_video_prompts.txt"
 if [ ! -f "$PROMPTS_FILE" ]; then
     echo "❌ Error: Video prompts file not found at '$PROMPTS_FILE'."
     exit 1
 fi
 
+# Read prompts into an array, strip CR (\r), and filter out empty lines
 readarray -t VIDEO_PROMPTS < "$PROMPTS_FILE"
-VIDEO_PROMPTS=("${VIDEO_PROMPTS[@]///$'\r'/}") 
+VIDEO_PROMPTS=("${VIDEO_PROMPTS[@]///$'\r'/}")
 
 FILTERED_VIDEO_PROMPTS=()
 for prompt in "${VIDEO_PROMPTS[@]}"; do
@@ -68,6 +68,7 @@ if [ "$NUM_SCENES" -eq 0 ]; then
     echo "❌ Error: No video prompts found in '$PROMPTS_FILE'."
     exit 1
 fi
+
 echo "Loaded $NUM_SCENES video prompts from '$PROMPTS_FILE'."
 
 # --- Main Video Generation Loop ---
@@ -75,37 +76,32 @@ echo ""
 echo "--- Starting Video Generation for All Scenes ---"
 for i in $(seq 0 $((NUM_SCENES - 1))); do
     SCENE_NUM=$((i + 1))
-    PROMPT="${VIDEO_PROPROMPTS[$i]}"
-    
+    PROMPT="${VIDEO_PROMPTS[$i]}"
+
     # <<< MODIFIED LOGIC TO FIND IMAGE DYNAMICALLY >>>
     # This part now searches for any file starting with "sceneXX" and picks the first one.
     # It handles names like "scene01.png" and "scene01_run01.png" automatically.
-    
     SCENE_NUM_PADDED=$(printf "%02d" $SCENE_NUM)
-    # Find the first matching image file for the current scene, sorted alphabetically
     IMG_PATH=$(find "$INPUT_IMAGES_DIR" -maxdepth 1 -type f -name "scene${SCENE_NUM_PADDED}*.png" | sort | head -n 1)
 
-    # Check if an image was found for the scene
     if [ -z "$IMG_PATH" ]; then
         echo "⚠️  Warning: No image found for scene $SCENE_NUM (pattern: scene${SCENE_NUM_PADDED}*.png). Skipping."
-        continue 
+        continue
     fi
     # <<< END OF MODIFIED LOGIC >>>
-    
+
     OUTPUT_FILE="$OUTPUT_VIDEOS_DIR/scene_$(printf "%02d" $SCENE_NUM).mp4"
-    
+
     RING_SIZE=$(echo "$DARGS" | grep -oP '--ring_size \K\d+' | head -1)
-    if [ -z "$RING_SIZE" ]; then
-        RING_SIZE=4
-    fi
+    RING_SIZE=${RING_SIZE:-4}
 
     echo ""
     echo "=== Generating Scene $SCENE_NUM ==="
-    echo "  Image: '$IMG_PATH'" # This will now show the actual found image path
+    echo "  Image:  '$IMG_PATH'"
     echo "  Prompt: '${PROMPT:0:100}...' (truncated)"
     echo "  Output: '$OUTPUT_FILE'"
-    
-    torchrun --nproc_per_node=$RING_SIZE src/generate.py \
+
+    torchrun --nproc_per_node="$RING_SIZE" src/generate.py \
       --task i2v-14B \
       --size "$VIDEO_SIZE" \
       --ckpt_dir "$VIDEO_MODEL_PATH" \
@@ -113,11 +109,11 @@ for i in $(seq 0 $((NUM_SCENES - 1))); do
       --prompt "$PROMPT" \
       --save_file "$OUTPUT_FILE" \
       $DARGS
-      
+
     if [ $? -eq 0 ]; then
-      echo "✅ Scene $SCENE_NUM completed."
+        echo "✅ Scene $SCENE_NUM completed."
     else
-      echo "❌ Scene $SCENE_NUM FAILED."
+        echo "❌ Scene $SCENE_NUM FAILED."
     fi
 done
 
@@ -127,17 +123,16 @@ echo "--- All Scene Videos Generated ---"
 # --- Concatenate Final Video ---
 echo ""
 echo "=== Concatenating Final Story Video ==="
-
 FILELIST="$OUTPUT_VIDEOS_DIR/filelist.txt"
 > "$FILELIST"
 
 for i in $(seq 1 $NUM_SCENES); do
-  VIDEO_FILE="$OUTPUT_VIDEOS_DIR/scene_$(printf "%02d" $i).mp4"
-  if [ -f "$VIDEO_FILE" ]; then
-    echo "file '$VIDEO_FILE'" >> "$FILELIST"
-  else
-    echo "Warning: Video file '$VIDEO_FILE' not found, skipping in final concatenation."
-  fi
+    VIDEO_FILE="$OUTPUT_VIDEOS_DIR/scene_$(printf "%02d" $i).mp4"
+    if [ -f "$VIDEO_FILE" ]; then
+        echo "file '$VIDEO_FILE'" >> "$FILELIST"
+    else
+        echo "Warning: Video file '$VIDEO_FILE' not found, skipping in final concatenation."
+    fi
 done
 
 if [ ! -s "$FILELIST" ]; then
@@ -146,15 +141,14 @@ if [ ! -s "$FILELIST" ]; then
 fi
 
 FINAL_OUTPUT_PATH="$OUTPUT_VIDEOS_DIR/$FINAL_VIDEO_NAME"
-
 ffmpeg -f concat -safe 0 -i "$FILELIST" -c copy "$FINAL_OUTPUT_PATH" -y
 
 if [ $? -eq 0 ]; then
-  echo ""
-  echo "✅ Concatenation complete!"
-  echo "Final story video: '$FINAL_OUTPUT_PATH'"
+    echo ""
+    echo "✅ Concatenation complete!"
+    echo "Final story video: '$FINAL_OUTPUT_PATH'"
 else
-  echo "❌ Error: Video concatenation failed. Check FFmpeg output above for details."
+    echo "❌ Error: Video concatenation failed. Check FFmpeg output above for details."
 fi
 
 echo ""

@@ -90,13 +90,13 @@ class ImageGenerator:
 # ---------------------------------
 if __name__ == "__main__":
     # --- 配置区 ---
-    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉的一天_20250612_163521")
-    reference_image_path = 'img/24.png'
+    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/打工人的一天_20250612_220505")
+    reference_image_path = 'img/25.png'
     output_images_subfolder = "generated_images"
     base_seed = 123456
 
     # ✨ 核心配置：指定要生成的场次列表，以及每个场次生成几张图片
-    scene_indices_to_generate = [8,9]  # 要处理的场次号
+    scene_indices_to_generate = [1,2,3,6,8]  # 要处理的场次号
     num_images_per_scene = 3                  # 每个场次生成 3 张图
 
     override_prompts = {}
