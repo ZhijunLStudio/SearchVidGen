@@ -214,7 +214,7 @@ if __name__ == "__main__":
     # --- Configuration ---
     # Path to the directory containing img2img_prompts.txt (e.g., from LLMClient output)
     # REPLACE THIS WITH THE ACTUAL PATH TO YOUR GENERATED CONTENT FOLDER
-    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉") # Example path
+    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉的一天_20250612_163521") # Example path
     # If the above path doesn't exist, you'll need to run llm_client.py first
     # Or, manually create a directory and put an img2img_prompts.txt file inside it.
 

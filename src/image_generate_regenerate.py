@@ -90,22 +90,24 @@ class ImageGenerator:
 # ---------------------------------
 if __name__ == "__main__":
     # --- 配置区 ---
-    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉")
-    reference_image_path = 'img/20.png'
+    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/卡皮巴拉的一天_20250612_163521")
+    reference_image_path = 'img/24.png'
     output_images_subfolder = "generated_images"
     base_seed = 123456
 
     # ✨ 核心配置：指定要生成的场次列表，以及每个场次生成几张图片
-    scene_indices_to_generate = [1]  # 要处理的场次号
+    scene_indices_to_generate = [8,9]  # 要处理的场次号
     num_images_per_scene = 3                  # 每个场次生成 3 张图
 
+    override_prompts = {}
+    
     # ✨ 更新后的 Prompt 覆盖字典 (使用“视觉描述”策略)
-    override_prompts = {
-        1: "Anime style, high quality, consistent character design. In a cozy home office, a young man leans back thoughtfully in his chair. He is at a minimalist wooden desk where a modern laptop is open. The laptop's illuminated screen displays a dark-themed user interface with colorful, syntax-highlighted text, while its outer lid is a simple matte black. The scene is bathed in warm afternoon light, and a steaming ceramic coffee cup sits on the desk next to a thriving potted plant. The camera captures his thoughtful expression, with the laptop screen clearly visible beside him.",
-        2: "Anime style, high quality, consistent character design, a young student sitting in a bright library, surrounded by stacks of programming books. They are focusing intently on a tablet; the tablet's bright screen shows an educational website interface with diagrams, bullet points, and blocks of colored text. The back of the tablet is a clean, white surface. A notebook filled with handwritten notes is beside them. The tablet screen is directly facing the student.",
-        7: "Anime style, high quality, consistent character design, a teenager lying on a cozy bed with a laptop. The laptop's glowing screen is playing an online video tutorial, showing a presenter's screen with presentation slides, flowcharts, and colorful text. The lid on the back of the screen has a cute anime sticker on it. The laptop is tilted up toward the teen’s face, surrounded by plush toys and a soft bedside lamp casting a warm glow.",
-        10: "Anime style, high quality, consistent character design, a serene outdoor café with a freelancer typing on a laptop. On the laptop's bright, lit-up screen, the user interface of a development application is visible, featuring side panels, menus, and a main window with structured, colorful text. The laptop's outer shell is a sleek, metallic silver. A steaming cup of tea is beside them, and cherry blossom petals drift in the air. The laptop screen faces the freelancer (front view)."
-    }
+    # override_prompts = {
+    #     1: "Anime style, high quality, consistent character design. In a cozy home office, a young man leans back thoughtfully in his chair. He is at a minimalist wooden desk where a modern laptop is open. The laptop's illuminated screen displays a dark-themed user interface with colorful, syntax-highlighted text, while its outer lid is a simple matte black. The scene is bathed in warm afternoon light, and a steaming ceramic coffee cup sits on the desk next to a thriving potted plant. The camera captures his thoughtful expression, with the laptop screen clearly visible beside him.",
+    #     2: "Anime style, high quality, consistent character design, a young student sitting in a bright library, surrounded by stacks of programming books. They are focusing intently on a tablet; the tablet's bright screen shows an educational website interface with diagrams, bullet points, and blocks of colored text. The back of the tablet is a clean, white surface. A notebook filled with handwritten notes is beside them. The tablet screen is directly facing the student.",
+    #     7: "Anime style, high quality, consistent character design, a teenager lying on a cozy bed with a laptop. The laptop's glowing screen is playing an online video tutorial, showing a presenter's screen with presentation slides, flowcharts, and colorful text. The lid on the back of the screen has a cute anime sticker on it. The laptop is tilted up toward the teen’s face, surrounded by plush toys and a soft bedside lamp casting a warm glow.",
+    #     10: "Anime style, high quality, consistent character design, a serene outdoor café with a freelancer typing on a laptop. On the laptop's bright, lit-up screen, the user interface of a development application is visible, featuring side panels, menus, and a main window with structured, colorful text. The laptop's outer shell is a sleek, metallic silver. A steaming cup of tea is beside them, and cherry blossom petals drift in the air. The laptop screen faces the freelancer (front view)."
+    # }
 
     generation_params = {
         "steps": 30,

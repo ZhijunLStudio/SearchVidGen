@@ -4,7 +4,7 @@ from openai import OpenAI
 from typing import Dict, List, Any
 import re
 from datetime import datetime
-from pathlib import Path # Use pathlib for robust path handling
+from pathlib import Path
 
 class LLMClient:
     def __init__(self, api_key: str = None, base_url: str = None, model: str = "deepseek-v3-250324"):
@@ -54,7 +54,7 @@ class LLMClient:
 
             # --- 保存生成内容到文件 ---
             # 清理搜索词，用于文件夹命名，避免非法字符
-            safe_search_query = re.sub(r'[\\/:*?"<>|]', '', search_query)[:50].strip() # Limit length for path
+            safe_search_query = re.sub(r'[\\/:*?"<>|]', '', search_query)[:50].strip()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_folder_name = f"{safe_search_query}_{timestamp}"
 
@@ -63,19 +63,19 @@ class LLMClient:
             output_dir.mkdir(parents=True, exist_ok=True)
             print(f"Generated content will be saved to: {output_dir}")
 
-            # 保存图片生成提示词 (No numbering)
+            # 保存图片生成提示词
             with open(output_dir / "img2img_prompts.txt", "w", encoding="utf-8") as f:
                 for p in parsed_content["img2img_prompts"]:
                     f.write(f"{p}\n")
             print("  - img2img_prompts.txt saved.")
 
-            # 保存视频生成提示词 (No numbering)
+            # 保存视频生成提示词
             with open(output_dir / "img2vid_prompts.txt", "w", encoding="utf-8") as f:
                 for p in parsed_content["img2vid_prompts"]:
                     f.write(f"{p}\n")
             print("  - img2vid_prompts.txt saved.")
 
-            # 保存旁白文本 (No numbering)
+            # 保存旁白文本
             with open(output_dir / "narrations.txt", "w", encoding="utf-8") as f:
                 for n in parsed_content["narrations"]:
                     f.write(f"{n}\n")
@@ -111,65 +111,86 @@ class LLMClient:
             }
 
     def _build_content_generation_prompt(self, search_query: str) -> str:
-        """构建内容生成的prompt"""
-        # Define the consistent style prefix
-        style_prefix = "Anime style, high quality, consistent character design, " # Added "consistent character design" for better character consistency
+        """构建内容生成的prompt - 基于AI视频生成提示词配方优化"""
+        style_prefix = "Anime style, high quality, consistent character design, "
 
         return f"""
-            请根据搜索词"{search_query}"，生成一个教育类短视频的完整内容方案。
+请根据搜索词"{search_query}"，生成一个教育类短视频的完整内容方案。请严格按照以下AI视频生成提示词配方要求：
 
-            要求生成以下内容：
+## 提示词配方要求：
 
-            1. **图片生成提示词**（10个场景）
-            - 每个提示词用英文编写，**长度应在20-40个单词之间**，提供丰富且具体的视觉细节。
-            - 描述清晰的视觉场景，包含人物、环境、物品和光线等细节。
-            - **所有图片提示词都必须以"{style_prefix}"开头，以确保动漫风格和一致性。**
-            - 适合用于图片生成AI，强调高质量、电影感或特定艺术风格。
-            - 保持视觉风格一致性。
+**高级公式**: Prompt = 主体（主体描述）+ 场景（场景描述）+ 动作（动作描述）+ 镜头语言 + 氛围 + 风格
 
-            2. **视频生成提示词**（10个场景）
-            - 每个提示词用英文编写，**长度应在30-60个单词之间**，详细描述动态效果和镜头运动。
-            - 基于对应的图片场景，描述动态效果，包含人物动作、物体变化、镜头推拉摇移等动态元素。
-            - **所有视频提示词都必须以"{style_prefix}"开头，以确保动漫风格和一致性。**
-            - 时长约5秒的动作描述。
+**镜头运动公式**: Prompt = 镜头运动描述 + 主体（主体描述）+ 场景（场景描述）+ 动作（动作描述）+ 镜头语言 + 氛围 + 风格
 
-            3. **旁白文本**（10段）
-            - 每段不超过15个中文字。
-            - 与对应场景内容匹配。
-            - 语言简洁有力。
-            - 适合语音合成。
+## 生成内容要求：
 
-            4. **视频业务点**
-            - 3-5个核心业务价值点。
-            - 中文描述。
-            - 突出教育价值。
+### 1. **图片生成提示词**（10个场景）
+- 每个提示词用英文编写，**长度应在40-60个单词之间**
+- **必须以"{style_prefix}"开头，以确保动漫风格和一致性**
+- 包含详细的主体描述（外观、服装、表情等）
+- 包含丰富的场景描述（环境、背景、前景、光线等）
+- 包含具体的动作描述（姿态、表情、互动等）
+- 包含镜头语言（拍摄角度、构图、景深等）
+- 包含氛围描述（情绪、感觉、气氛等）
+- 确保视觉风格一致性和高质量渲染效果
 
-            5. **服务概述**
-            - 100字以内的中文描述。
-            - 说明视频的整体价值和目标受众。
+### 2. **视频生成提示词**（10个场景）
+- 每个提示词用英文编写，**长度应在50-80个单词之间**
+- **必须以"{style_prefix}"开头，以确保动漫风格和一致性**
+- **必须包含具体的镜头运动描述**（如：slow push-in shot, tracking shot, dolly movement, pan, tilt, zoom等）
+- 基于对应的图片场景，描述5秒内的动态变化
+- 包含人物的具体动作变化（面部表情、肢体动作、姿态转换等）
+- 包含环境的动态元素（光线变化、物体移动、背景变化等）
+- 包含镜头运动的时间控制（每个镜头运动持续时间控制在5秒内）
+- 确保动作的自然性和流畅性
 
-            请严格按照以下JSON格式返回：
-            ```json
-            {{
-                "img2img_prompts": [
-                    "{style_prefix}A cozy home office with a modern laptop displaying intricate Python code, bathed in warm afternoon natural light, a ceramic coffee cup steaming gently on a minimalist wooden desk next to a thriving potted plant.",
-                    "{style_prefix}A young student sitting in a bright library, surrounded by stacks of programming books, focusing intently on a Python tutorial displayed on a tablet, with a notebook filled with handwritten notes beside them.",
-                    ...
-                ],
-                "img2vid_prompts": [
-                    "{style_prefix}A smooth time-lapse sequence showing a person entering a home office, turning on a laptop, hands beginning to type rapidly on the keyboard, and Python code scrolling quickly on the screen, followed by a gentle pan to the steaming coffee cup.",
-                    "{style_prefix}A slow zoom into the student's face in the library, showing their concentration as they highlight a section in the Python tutorial, then a quick cut to their hand writing notes in the notebook.",
-                    ...
-                ],
-                "narrations": [
-                    "旁白1",
-                    "旁白2",
-                    ...
-                ],
-                "business_points": "业务点描述...",
-                "service_overview": "服务概述..."
-            }}```
-            """
+### 3. **旁白文本**（10段）
+- 每段不超过15个中文字
+- 与对应场景内容匹配
+- 语言简洁有力，适合语音合成
+- 具有教育价值和感染力
+
+### 4. **视频业务点**
+- 3-5个核心业务价值点
+- 中文描述，突出教育价值
+
+### 5. **服务概述**
+- 100字以内的中文描述
+- 说明视频的整体价值和目标受众
+
+## 示例参考：
+
+**图片提示词示例**:
+"{style_prefix}A dedicated young professional with focused amber eyes and neat business attire, sitting at a modern ergonomic workspace in a bright open-plan office environment. Multiple monitors display colorful data visualizations and code interfaces, while a steaming coffee cup and small succulent plant add personal touches to the organized desk. Soft natural lighting filters through large windows, creating a productive yet comfortable atmosphere with contemporary corporate design and warm professional energy."
+
+**视频提示词示例**:
+"{style_prefix}Slow circular dolly shot starting from behind the professional's chair, gradually moving around to capture their concentrated typing motion and facial expressions. The camera reveals changing data on multiple monitors in real-time while steam gently rises from the coffee cup. The professional occasionally pauses to adjust their posture, sip coffee, or review documents with precise hand movements. Background colleagues work quietly as natural lighting subtly shifts across the workspace, maintaining consistent productive office atmosphere throughout the 5-second sequence."
+
+请严格按照以下JSON格式返回：
+```json
+{{
+    "img2img_prompts": [
+        "{style_prefix}详细的场景描述...",
+        "{style_prefix}详细的场景描述...",
+        ...
+    ],
+    "img2vid_prompts": [
+        "{style_prefix}镜头运动描述 + 详细的动态场景描述...",
+        "{style_prefix}镜头运动描述 + 详细的动态场景描述...",
+        ...
+    ],
+    "narrations": [
+        "旁白1",
+        "旁白2",
+        ...
+    ],
+    "business_points": "业务点描述...",
+    "service_overview": "服务概述..."
+}}```
+
+注意：请确保所有提示词都遵循AI视频生成的最佳实践，包括镜头运动的专业性、视觉细节的丰富性、以及动作描述的精确性。
+"""
 
     def _parse_generated_content(self, content: str) -> Dict[str, Any]:
         """解析生成的内容"""
@@ -199,12 +220,11 @@ class LLMClient:
                     # Adjust length to 10 if not already
                     while len(data[field]) < 10:
                         data[field].append(f"Default {field.replace('_', ' ')} item {len(data[field])+1}.")
-                    data[field] = data[field][:10] # Truncate if more than 10
+                    data[field] = data[field][:10]
             return data
 
         except json.JSONDecodeError as e:
             print(f"JSON parsing failed: {e}. Attempting manual parse.")
-            # If JSON parsing fails, try manual parsing
             return self._manual_parse_content(content)
         except Exception as e:
             raise ValueError(f"内容解析失败: {str(e)}")
@@ -241,17 +261,16 @@ class LLMClient:
                 if current_section in ["img2img_prompts", "img2vid_prompts", "narrations"]:
                     # 移除可能的序号
                     clean_line = re.sub(r'^\d+[\.\)]\s*', '', line)
-                    if clean_line and len(result[current_section]) < 10: # Only add if not already 10
+                    if clean_line and len(result[current_section]) < 10:
                         result[current_section].append(clean_line)
                 else:
-                    # For business points and service overview, just append line
                     result[current_section] += line + " "
 
         # Ensure lists have exactly 10 elements by padding or truncating
         for field in ["img2img_prompts", "img2vid_prompts", "narrations"]:
             while len(result[field]) < 10:
                 result[field].append(f"Default {field.replace('_', ' ')} item {len(result[field])+1}.")
-            result[field] = result[field][:10] # Truncate if more than 10
+            result[field] = result[field][:10]
 
         result["business_points"] = result["business_points"].strip()
         result["service_overview"] = result["service_overview"].strip()
@@ -262,13 +281,12 @@ class LLMClient:
 if __name__ == "__main__":
     client = LLMClient()
     # Using "如何学习Python编程" as an example search query
-    search_query_example = "打工人的一天"
+    search_query_example = "卡皮巴拉的一天"
     output_result = client.generate_video_content(search_query_example, output_base_dir="generated_video_content")
 
     if output_result["success"]:
         print("\n--- LLM Content Generation Successful ---")
         print(f"All content saved to: {output_result['data']['output_folder']}")
-        # You can now access the parsed data directly from output_result['data']
         print(f"First img2img prompt: {output_result['data']['img2img_prompts'][0]}")
         print(f"First img2vid prompt: {output_result['data']['img2vid_prompts'][0]}")
         print(f"First narration: {output_result['data']['narrations'][0]}")
@@ -282,3 +300,4 @@ if __name__ == "__main__":
     # output_result_2 = client.generate_video_content(search_query_example_2, output_base_dir="generated_video_content")
     # if output_result_2["success"]:
     #     print(f"\nAnother content set saved to: {output_result_2['data']['output_folder']}")
+
