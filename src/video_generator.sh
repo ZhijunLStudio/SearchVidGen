@@ -6,7 +6,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Base directory where your LLMClient output folders are located
 # This should point DIRECTLY to the specific content folder.
-LLM_OUTPUT_BASE_DIR="/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/打工人的一天_20250612_220505"
+LLM_OUTPUT_BASE_DIR="generated_video_content/春天在哪里_20250614_002954"
 
 # Path to your Wan-AI video generation model checkpoint directory
 VIDEO_MODEL_PATH="/data/home/lizhijun/llm/flux-hf/model/Wan-AI/Wan2.1-I2V-14B-480P"

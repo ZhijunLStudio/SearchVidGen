@@ -214,12 +214,12 @@ if __name__ == "__main__":
     # --- Configuration ---
     # Path to the directory containing img2img_prompts.txt (e.g., from LLMClient output)
     # REPLACE THIS WITH THE ACTUAL PATH TO YOUR GENERATED CONTENT FOLDER
-    input_content_dir = Path("/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/打工人的一天_20250612_220505") # Example path
+    input_content_dir = Path("generated_video_content/春天在哪里_20250614_002954") # Example path
     # If the above path doesn't exist, you'll need to run llm_client.py first
     # Or, manually create a directory and put an img2img_prompts.txt file inside it.
 
     # Path to your reference image (e.g., the anime boy character)
-    reference_image_path = 'img/25.png'
+    reference_image_path = 'img/12.png'
 
     # Output subfolder name within input_content_dir for generated images
     output_images_subfolder = "generated_images"

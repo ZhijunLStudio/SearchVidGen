@@ -6,13 +6,13 @@ set -euo pipefail
 ##########################
 
 # 原始 LLM 输出内容目录（必须是真实存在的目录，含 generated_images, img2vid_video_prompts.txt）
-LLM_OUTPUT_BASE_DIR="/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/打工人的一天_20250612_220505"
+LLM_OUTPUT_BASE_DIR="/data/home/lizhijun/opensource/SearchVidGen/generated_video_content/春天在哪里_20250614_002954"
 
 # 要生成的片段编号列表（逗号分隔）
-SCENES_LIST="1,8"
+SCENES_LIST="5"
 
 # 重复 runs 次数
-NUM_RUNS=3
+NUM_RUNS=1
 
 # 模型路径、分辨率、DARGS
 VIDEO_MODEL_PATH="/data/home/lizhijun/llm/flux-hf/model/Wan-AI/Wan2.1-I2V-14B-480P"

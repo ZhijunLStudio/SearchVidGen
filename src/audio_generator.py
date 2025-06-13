@@ -15,7 +15,7 @@ class KokoroAudioGenerator:
         """
         self.model_path = Path(model_path)
         self.sample_rate = 24000 # Kokoro 模型的采样率通常是 24000 Hz
-        self.voice = 'zm_009'    # 默认中文女声，可以根据需要更改为 'zm_010' (男声)
+        self.voice = 'zf_002'    # 默认中文女声，可以根据需要更改为 'zm_010' (男声)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu' # 优先使用 GPU
 
         self._init_kokoro_model()
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # --- Configuration ---
     # !!! IMPORTANT: Set this to the actual path of your LLMClient output folder !!!
     # This folder should contain your 'narrations.txt' file.
-    input_content_dir = Path("generated_video_content/如何学习Python编程_20250611_010357") # EXAMPLE PATH
+    input_content_dir = Path("generated_video_content/打工人的一天_20250612_220505") # EXAMPLE PATH
 
     # Output subfolder name within input_content_dir for generated audios
     output_audio_subfolder = "audios"
