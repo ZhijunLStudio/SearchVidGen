@@ -1,0 +1,129 @@
+{
+  "system_prompts": {
+    "content_generation": "你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。你擅长创建连贯的故事叙事，深谙视觉艺术的表达技巧，能够将抽象的概念转化为具体的视觉场景。你的作品总是能够抓住观众的注意力，传递深刻的情感和信息。",
+    
+    "image_validation": "你是一位专业的图像分析师和视觉内容评估专家。你具备敏锐的艺术鉴赏能力，能够准确识别图像中的各种元素，包括人物、场景、动作、情感表达、构图、色彩、光线等。你能够客观地评估图像质量，并提供专业的改进建议。",
+    
+    "video_prompt_generation": "你是一位专业的视频制作专家和镜头语言大师。你深刻理解电影语言，熟悉各种镜头运动、构图技巧、剪辑节奏。你能够将静态的图像转化为动态的视频概念，创造引人入胜的视觉故事。"
+  },
+  
+  "content_generation_templates": {
+    "basic_structure": "请根据搜索词\"{search_query}\"，为我生成一个引人入胜的短视频的完整内容方案，共{scene_count}个场景。",
+    
+    "narrative_principles": [
+      "叙事连贯性：所有场景必须构成一个完整、连贯的故事或逻辑流程",
+      "时序一致性：场景必须遵循严格的、不可逆转的时间顺序",
+      "情感递进：每个场景的情感强度应该有所变化，形成起承转合的节奏",
+      "视觉统一：保持统一的视觉风格和角色设计",
+      "主题突出：每个场景都应该服务于整体主题的表达"
+    ],
+    
+    "style_prefix": "Anime style, high quality, consistent character design, detailed background, cinematic lighting, ",
+    
+    "prompt_requirements": {
+      "image_prompts": {
+        "language": "英文",
+        "word_count": "40-60个单词",
+        "must_include": ["主体描述", "场景描述", "动作描述", "镜头语言", "氛围描述"],
+        "style_consistency": "必须以指定风格前缀开头"
+      },
+      
+      "video_prompts": {
+        "language": "英文", 
+        "word_count": "50-80个单词",
+        "must_include": ["镜头运动描述", "动态变化", "环境响应", "情感表达"],
+        "camera_movements": ["slow push-in shot", "tracking shot", "dolly movement", "pan", "tilt", "zoom", "crane shot", "handheld camera"]
+      },
+      
+      "narrations": {
+        "language": "中文",
+        "word_limit": "每段不超过15个中文字",
+        "tone": "简洁有力，富有感染力",
+        "matching": "与对应场景内容和情绪紧密匹配"
+      }
+    }
+  },
+  
+  "validation_prompts": {
+    "image_content_analysis": "请仔细观察这张图片，详细描述以下内容：\n1. 图片中的主要人物或角色（外观特征、表情、姿势）\n2. 场景环境（背景、道具、氛围）\n3. 动作和行为（正在进行的活动）\n4. 整体构图和视觉效果\n5. 情感表达和故事感",
+    
+    "prompt_consistency_check": "请将这张图片与以下提示词进行对比分析：\n\n提示词：{prompt}\n\n请评估：\n1. 图片内容是否与提示词描述一致？\n2. 哪些元素体现得很好？\n3. 哪些元素缺失或不够准确？\n4. 角色一致性如何？\n5. 整体质量评分（1-10分）并说明理由",
+    
+    "improvement_suggestions": "基于上述分析，请提供具体的改进建议：\n1. 如何优化提示词以获得更好的结果？\n2. 哪些关键词需要加强或调整？\n3. 是否建议重新生成？\n请提供可操作的具体建议。"
+  },
+  
+  "error_messages": {
+    "missing_api_key": "❌ 请提供有效的API Key",
+    "missing_search_query": "❌ 请输入搜索词",
+    "missing_reference_image": "❌ 请上传角色一致性参考图",
+    "invalid_scene_count": "❌ 场景数量必须在3-20之间",
+    "project_not_found": "❌ 没有找到当前项目，请先生成内容",
+    "file_not_found": "❌ 找不到必要的文件，请检查项目完整性",
+    "api_request_failed": "❌ API请求失败，请检查网络连接和API配置",
+    "model_initialization_failed": "❌ 模型初始化失败，请检查模型路径和权限"
+  },
+  
+  "success_messages": {
+    "content_generated": "✅ 内容生成成功！",
+    "content_saved": "✅ 内容已保存",
+    "images_generated": "✅ 图片生成完成",
+    "validation_completed": "✅ 验证完成",
+    "project_exported": "✅ 项目导出成功"
+  },
+  
+  "ui_labels": {
+    "tabs": {
+      "content_generation": "📝 内容生成",
+      "image_generation": "🎨 图片生成", 
+      "validation": "🔍 多模态验证",
+      "project_management": "📊 项目管理"
+    },
+    
+    "sections": {
+      "basic_config": "🔧 基础配置",
+      "llm_config": "🤖 语言模型配置",
+      "generation_results": "📊 生成结果",
+      "model_config": "⚙️ 模型配置",
+      "generation_params": "🔧 生成参数"
+    },
+    
+    "buttons": {
+      "generate_content": "🚀 生成内容",
+      "save_edits": "💾 保存编辑",
+      "regenerate": "🔄 重新生成",
+      "generate_images": "🎨 开始生成图片",
+      "validate": "🔍 开始验证",
+      "refresh_project": "🔄 刷新项目信息",
+      "export_project": "📦 导出项目"
+    }
+  },
+  
+  "tips": {
+    "search_query": "输入富有创意的主题，如：春天在哪里、奇幻森林的秘密、都市夜晚的温暖等",
+    "scene_count": "建议5-10个场景，既能讲好故事又不会过于复杂",
+    "reference_image": "建议使用清晰的角色正面照，背景简洁，有利于保持一致性",
+    "regeneration": "描述具体的不满意之处，如：'角色表情不够生动'、'场景转换不够自然'等",
+    "validation": "验证结果将帮助您了解生成图片的质量，并提供改进建议"
+  },
+  
+  "workflows": {
+    "complete_pipeline": [
+      "1. 输入搜索词和场景数量",
+      "2. 配置语言模型API",
+      "3. 生成并编辑五种内容",
+      "4. 上传角色参考图",
+      "5. 配置图片生成模型",
+      "6. 生成场景图片",
+      "7. 使用VLM验证图片质量",
+      "8. 根据验证结果优化"
+    ],
+    
+    "quick_start": [
+      "1. 输入主题词",
+      "2. 填写API配置",
+      "3. 点击生成内容",
+      "4. 上传参考图生成图片"
+    ]
+  }
+}
+

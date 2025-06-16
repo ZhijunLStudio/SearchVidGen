@@ -5,3 +5,4 @@ kokoro-main/
 generated_video_content/
 img/
 **/__pycache__/
+tmp/
