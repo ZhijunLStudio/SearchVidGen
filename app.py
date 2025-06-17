@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from PIL import Image
 
 # 添加src目录到Python路径
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -18,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 # 导入自定义模块
 try:
     from src.llm_client import LLMClient
-    from src.image_generate_class import ImageGenerator  # 修改导入路径
+    from src.image_generate_class import ImageGenerator
     from src.vlm_validator import VLMValidator
 except ImportError as e:
     print(f"⚠️ 导入模块失败: {e}")
@@ -270,6 +271,7 @@ class VideoGenerationPipeline:
             
             # 更新当前提示词
             self.current_prompts = img_list
+            self.current_images = [None] * len(self.current_prompts)
             
             self._save_content_to_project(content)
             return f"✅ 内容已保存到：{self.current_project_dir}"
@@ -328,22 +330,18 @@ class VideoGenerationPipeline:
 
     def initialize_image_generator(self, ip_adapter_path: str, base_model: str, 
                                   image_encoder_path: str, image_encoder_2_path: str, use_offload: bool):
-        """初始化图片生成器 - 修复构造函数参数"""
+        """初始化图片生成器"""
         try:
-            # 根据你的 ImageGenerator 类实际构造函数进行初始化
-            # 先尝试不同的初始化方式
+            # 尝试创建ImageGenerator实例
             try:
-                # 尝试方式1：传入model_type参数
-                self.image_generator = ImageGenerator(model_type="flux")
+                self.image_generator = ImageGenerator(model_type="flux", use_offload=use_offload)
             except TypeError:
                 try:
-                    # 尝试方式2：无参数初始化
+                    self.image_generator = ImageGenerator(model_type="flux")
+                except:
                     self.image_generator = ImageGenerator()
-                except TypeError:
-                    # 尝试方式3：传入基础模型路径
-                    self.image_generator = ImageGenerator(base_model)
             
-            # 更新配置（如果有update_config方法的话）
+            # 更新配置
             if hasattr(self.image_generator, 'update_config'):
                 self.image_generator.update_config(
                     ip_adapter_path=ip_adapter_path,
@@ -353,7 +351,7 @@ class VideoGenerationPipeline:
                     use_offload=use_offload
                 )
             else:
-                # 如果没有update_config方法，直接设置属性
+                # 直接设置属性
                 self.image_generator.ip_adapter_path = ip_adapter_path
                 self.image_generator.base_model = base_model
                 self.image_generator.image_encoder_path = image_encoder_path
@@ -404,20 +402,86 @@ class VideoGenerationPipeline:
             # 生成单张图片
             output_path = images_dir / f"image_{slot_index:03d}.png"
             
-            # 调用图片生成器（根据实际方法名调整）
+            # 调用图片生成器
             try:
-                if hasattr(self.image_generator, 'generate_single'):
-                    generated_path = self.image_generator.generate_single(
-                        prompt=prompt,
-                        reference_image=str(ref_image_path),
-                        output_path=output_path,
-                        steps=steps,
-                        guidance_scale=guidance_scale,
-                        subject_scale=subject_scale,
-                        seed=random.randint(1000, 999999)
+                generated_path = self.image_generator.generate(
+                    prompt=prompt,
+                    reference_image=str(ref_image_path),
+                    output_path=str(output_path),
+                    steps=steps,
+                    guidance_scale=guidance_scale,
+                    subject_scale=subject_scale,
+                    seed=random.randint(1000, 999999)
+                )
+                    
+            except TypeError:
+                # 如果参数不对，尝试更简单的调用
+                try:
+                    generated_path = self.image_generator.generate(
+                        prompt, str(ref_image_path), str(output_path)
                     )
-                elif hasattr(self.image_generator, 'generate'):
-                    # 如果方法名是generate
+                except Exception as e:
+                    return f"❌ 图片生成调用失败: {str(e)}", None
+            
+            if generated_path and Path(generated_path).exists():
+                # 读取生成的图片
+                img = Image.open(generated_path)
+                # 更新图片槽状态
+                if slot_index < len(self.current_images):
+                    self.current_images[slot_index] = str(generated_path)
+                return f"✅ 图片 {slot_index + 1} 生成成功", img
+            else:
+                return f"❌ 图片 {slot_index + 1} 生成失败", None
+                
+        except Exception as e:
+            return f"❌ 生成失败：{str(e)}", None
+
+    # 修改批量生成函数，同时更新槽位可见性
+    def batch_generate_images_direct(self, reference_image, ip_adapter_path: str, base_model: str, 
+                                    image_encoder_path: str, image_encoder_2_path: str, use_offload: bool, 
+                                    steps: int, guidance_scale: float, subject_scale: float, 
+                                    progress=gr.Progress()):
+        """直接批量生成图片，返回PIL Image对象和槽位可见性"""
+        try:
+            if not self.current_project_dir:
+                # 返回错误状态 + 10个None图片 + 10个False可见性
+                return ["❌ 请先生成内容"] + [None] * 10 + [gr.update(visible=False)] * 10
+            
+            if not self.current_prompts:
+                return ["❌ 没有找到提示词，请先生成内容"] + [None] * 10 + [gr.update(visible=False)] * 10
+            
+            if reference_image is None:
+                return ["❌ 请上传角色一致性参考图"] + [None] * 10 + [gr.update(visible=False)] * 10
+            
+            # 保存参考图
+            ref_image_path = self.current_project_dir / "reference_image.png"
+            reference_image.save(ref_image_path)
+            
+            # 初始化生成器
+            progress(0, desc="🔧 正在初始化图片生成器...")
+            success, message = self.initialize_image_generator(
+                ip_adapter_path, base_model, image_encoder_path, 
+                image_encoder_2_path, use_offload
+            )
+            if not success:
+                return [f"❌ {message}"] + [None] * 10 + [gr.update(visible=False)] * 10
+            
+            # 创建输出目录
+            images_dir = self.current_project_dir / "generated_images"
+            images_dir.mkdir(exist_ok=True)
+            
+            # 生成图片
+            slot_images = [None] * 10
+            slot_visibility = []
+            generated_count = 0
+            total_prompts = len(self.current_prompts)
+            
+            for i, prompt in enumerate(self.current_prompts):
+                progress((i + 1) / total_prompts, desc=f"🎨 正在生成第 {i + 1}/{total_prompts} 张图片...")
+                
+                output_path = images_dir / f"image_{i:03d}.png"
+                
+                try:
                     generated_path = self.image_generator.generate(
                         prompt=prompt,
                         reference_image=str(ref_image_path),
@@ -427,135 +491,46 @@ class VideoGenerationPipeline:
                         subject_scale=subject_scale,
                         seed=random.randint(1000, 999999)
                     )
-                else:
-                    return "❌ 找不到图片生成方法", None
-                    
-            except Exception as e:
-                # 如果上面的参数不对，尝试更简单的调用
-                try:
-                    generated_path = self.image_generator.generate(
-                        prompt, str(ref_image_path), str(output_path)
-                    )
-                except Exception as e2:
-                    return f"❌ 图片生成调用失败: {str(e2)}", None
-            
-            if generated_path and Path(generated_path).exists():
-                # 更新图片槽状态
-                if slot_index < len(self.current_images):
-                    self.current_images[slot_index] = str(generated_path)
-                return f"✅ 图片 {slot_index + 1} 生成成功", str(generated_path)
-            else:
-                return f"❌ 图片 {slot_index + 1} 生成失败", None
-                
-        except Exception as e:
-            return f"❌ 生成失败：{str(e)}", None
-
-    # 新增：生成器函数用于实时更新
-    def batch_generate_images_stream(self, reference_image, ip_adapter_path: str, base_model: str, 
-                                   image_encoder_path: str, image_encoder_2_path: str, 
-                                   use_offload: bool, steps: int, guidance_scale: float, 
-                                   subject_scale: float):
-        """批量生成图片 - 生成器版本用于实时更新"""
-        try:
-            if not self.current_project_dir:
-                yield "❌ 请先生成内容", [None] * 10, "❌ 没有项目"
-                return
-            
-            if not self.current_prompts:
-                yield "❌ 没有找到提示词，请先生成内容", [None] * 10, "❌ 没有提示词"
-                return
-            
-            if reference_image is None:
-                yield "❌ 请上传角色一致性参考图", [None] * 10, "❌ 没有参考图"
-                return
-            
-            # 保存参考图到项目目录
-            ref_image_path = self.current_project_dir / "reference_image.png"
-            reference_image.save(ref_image_path)
-            
-            # 初始化图片生成器
-            yield "🔧 正在初始化图片生成器...", [None] * 10, "初始化中"
-            success, message = self.initialize_image_generator(
-                ip_adapter_path, base_model, image_encoder_path, 
-                image_encoder_2_path, use_offload
-            )
-            if not success:
-                yield f"❌ {message}", [None] * 10, f"初始化失败: {message}"
-                return
-            
-            # 创建图片输出目录
-            images_dir = self.current_project_dir / "generated_images"
-            images_dir.mkdir(exist_ok=True)
-            
-            # 重置图片列表
-            self.current_images = [None] * len(self.current_prompts)
-            slot_images = [None] * 10  # 固定10个槽位
-            
-            # 逐个生成图片，实时更新
-            for i, prompt in enumerate(self.current_prompts):
-                current_status = f"🎨 正在生成第 {i + 1}/{len(self.current_prompts)} 张图片..."
-                yield current_status, slot_images.copy(), f"生成第{i+1}张"
-                
-                output_path = images_dir / f"image_{i:03d}.png"
-                
-                try:
-                    # 调用图片生成器
-                    if hasattr(self.image_generator, 'generate_single'):
-                        generated_path = self.image_generator.generate_single(
-                            prompt=prompt,
-                            reference_image=str(ref_image_path),
-                            output_path=output_path,
-                            steps=steps,
-                            guidance_scale=guidance_scale,
-                            subject_scale=subject_scale,
-                            seed=random.randint(1000, 999999)
-                        )
-                    elif hasattr(self.image_generator, 'generate'):
-                        generated_path = self.image_generator.generate(
-                            prompt=prompt,
-                            reference_image=str(ref_image_path),
-                            output_path=str(output_path),
-                            steps=steps,
-                            guidance_scale=guidance_scale,
-                            subject_scale=subject_scale,
-                            seed=random.randint(1000, 999999)
-                        )
-                    else:
-                        # 简化调用
-                        generated_path = self.image_generator.generate(
-                            prompt, str(ref_image_path), str(output_path)
-                        )
                     
                     if generated_path and Path(generated_path).exists():
-                        self.current_images[i] = str(generated_path)
-                        # 更新对应的槽位图片（如果在前10个槽位内）
-                        if i < 10:
-                            slot_images[i] = str(generated_path)
+                        # 读取图片并转换为PIL Image对象
+                        img = Image.open(generated_path)
                         
-                        # 实时返回更新后的状态
-                        success_status = f"✅ 第 {i + 1} 张图片生成成功！"
-                        yield success_status, slot_images.copy(), f"第{i+1}张完成"
+                        if i < 10:
+                            slot_images[i] = img  # 直接传递PIL Image对象
+                        
+                        generated_count += 1
+                        print(f"✅ 第 {i + 1} 张图片生成成功: {generated_path}")
                     else:
-                        fail_status = f"❌ 第 {i + 1} 张图片生成失败"
-                        yield fail_status, slot_images.copy(), f"第{i+1}张失败"
+                        print(f"❌ 第 {i + 1} 张图片生成失败")
                         
                 except Exception as e:
                     print(f"生成第 {i + 1} 张图片时出错: {e}")
-                    error_status = f"❌ 第 {i + 1} 张图片生成出错: {str(e)}"
-                    yield error_status, slot_images.copy(), f"第{i+1}张出错"
+                    continue
             
-            # 最终结果
-            valid_count = len([img for img in self.current_images if img is not None])
-            final_status = f"🎉 图片生成完成！成功生成 {valid_count}/{len(self.current_prompts)} 张图片"
-            yield final_status, slot_images.copy(), "全部完成"
+            # 设置槽位可见性
+            for i in range(10):
+                if i < total_prompts:
+                    slot_visibility.append(gr.update(visible=True))
+                else:
+                    slot_visibility.append(gr.update(visible=False))
+            
+            progress(1.0, desc="🎉 图片生成完成！")
+            status = f"🎉 图片生成完成！成功生成 {generated_count}/{total_prompts} 张图片"
+            
+            # 返回状态 + 图片 + 可见性更新
+            return [status] + slot_images + slot_visibility
             
         except Exception as e:
-            error_status = f"❌ 图片生成失败：{str(e)}"
-            yield error_status, [None] * 10, f"失败: {str(e)}"
+            print(f"批量生成出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return [f"❌ 生成失败：{str(e)}"] + [None] * 10 + [gr.update(visible=False)] * 10
+
 
     def validate_images_with_vlm(self, api_key: str, base_url: str, model_name: str, 
                                 progress=gr.Progress()) -> Tuple[str, List[Dict]]:
-        """使用视觉语言模型验证图片 - 返回可视化结果"""
+        """使用视觉语言模型验证图片"""
         try:
             if not self.current_project_dir:
                 return "❌ 没有当前项目，请先生成内容和图片", []
@@ -867,7 +842,7 @@ def create_interface():
                     with gr.Column(scale=1):
                         slot_image = gr.Image(
                             label=f"场景 {i+1}",
-                            type="pil",
+                            type="pil",  # 使用pil类型
                             height=200
                         )
                     
@@ -972,29 +947,6 @@ def create_interface():
                     updates.append(gr.update())
             return updates
         
-        # 批量生成图片的处理函数
-        def handle_batch_generate(reference_image, ip_adapter_path, base_model, 
-                                 image_encoder_path, image_encoder_2_path, use_offload, 
-                                 steps, guidance_scale, subject_scale):
-            """处理批量生成，使用生成器实时更新"""
-            
-            # 获取生成器的最后一个结果
-            last_result = None
-            for result in pipeline.batch_generate_images_stream(
-                reference_image, ip_adapter_path, base_model, 
-                image_encoder_path, image_encoder_2_path, use_offload, 
-                steps, guidance_scale, subject_scale
-            ):
-                last_result = result
-                # 实时yield状态和图片
-                status, slot_images, debug_info = result
-                yield status, *slot_images
-            
-            # 确保最终返回完整结果
-            if last_result:
-                status, slot_images, debug_info = last_result
-                yield status, *slot_images
-        
         scene_count.change(
             fn=update_scene_count, 
             inputs=[scene_count], 
@@ -1035,15 +987,18 @@ def create_interface():
             outputs=[slot["prompt"] for slot in image_slot_components]
         )
         
-        # 批量生成图片 - 使用生成器版本实现实时更新
+        # 批量生成图片 - 同时更新图片和可见性
         batch_generate_btn.click(
-            fn=handle_batch_generate,
+            fn=pipeline.batch_generate_images_direct,
             inputs=[reference_image, ip_adapter_path, base_model, image_encoder_path, 
-                   image_encoder_2_path, use_offload, steps, guidance_scale, subject_scale],
-            outputs=[image_generation_status] + [slot["image"] for slot in image_slot_components]
+                image_encoder_2_path, use_offload, steps, guidance_scale, subject_scale],
+            outputs=[image_generation_status] + [slot["image"] for slot in image_slot_components] + 
+                    [slot["row"] for slot in image_slot_components],
+            show_progress=True
         )
+
         
-        # 修复单张图片生成的事件绑定
+        # 单张图片生成
         def create_single_generate_function(slot_index):
             """为每个槽位创建单独的生成函数"""
             def single_generate(custom_prompt, ref_img, ip_path, base_mdl, enc_path1, enc_path2, 
@@ -1073,7 +1028,8 @@ def create_interface():
         validate_btn.click(
             fn=pipeline.validate_images_with_vlm,
             inputs=[vlm_api_key, vlm_base_url, vlm_model],
-            outputs=[validation_status, validation_results_display]
+            outputs=[validation_status, validation_results_display],
+            show_progress=True
         )
         
         # 刷新项目信息
@@ -1101,6 +1057,37 @@ def create_interface():
         refresh_project_btn.click(
             fn=refresh_project_info,
             outputs=[project_info]
+        )
+        
+        # 导出项目
+        def export_project():
+            if not pipeline.current_project_dir or not pipeline.current_project_dir.exists():
+                return "❌ 没有可导出的项目"
+            
+            try:
+                # 创建导出目录
+                export_dir = Path("exports")
+                export_dir.mkdir(exist_ok=True)
+                
+                # 创建zip文件
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                export_filename = export_dir / f"{pipeline.current_project_dir.name}_{timestamp}.zip"
+                
+                import zipfile
+                with zipfile.ZipFile(export_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for file_path in pipeline.current_project_dir.rglob('*'):
+                        if file_path.is_file():
+                            arcname = file_path.relative_to(pipeline.current_project_dir)
+                            zipf.write(file_path, arcname)
+                
+                return f"✅ 项目已导出到: {export_filename}"
+                
+            except Exception as e:
+                return f"❌ 导出失败: {str(e)}"
+        
+        export_project_btn.click(
+            fn=export_project,
+            outputs=[generation_status]
         )
     
     return app
@@ -1140,7 +1127,7 @@ if __name__ == "__main__":
                 print("❌ 找不到可用端口")
                 exit(1)
         
-        print(f"🌐 启动服务器: http://192.168.99.119:{port}")  # 修改IP显示
+        print(f"🌐 启动服务器: http://192.168.99.119:{port}")
         
         # 使用最简单的启动方式避免权限问题
         app.launch(
@@ -1160,4 +1147,3 @@ if __name__ == "__main__":
         print("3. 检查Python依赖是否完整")
         print("4. 检查Gradio版本兼容性")
         print("5. 尝试重新安装Gradio: pip install --upgrade gradio")
-
