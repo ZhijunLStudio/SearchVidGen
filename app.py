@@ -95,6 +95,10 @@ class VideoGenerationPipeline:
                 self.current_prompts = data["img2img_prompts"]
                 self.current_images = [None] * len(self.current_prompts)
                 
+                print(f"✅ 内容生成成功！")
+                print(f"项目目录：{self.current_project_dir}")
+                print(f"生成了 {len(self.current_prompts)} 个场景")
+                
                 return (
                     f"✅ 内容生成成功！\n项目目录：{self.current_project_dir}",
                     img_prompts_text,
@@ -429,29 +433,27 @@ class VideoGenerationPipeline:
                 # 更新图片槽状态
                 if slot_index < len(self.current_images):
                     self.current_images[slot_index] = str(generated_path)
-                return f"✅ 图片 {slot_index + 1} 生成成功", img
+                return f"✅ 重新生成第 {slot_index + 1} 张图片成功", img
             else:
-                return f"❌ 图片 {slot_index + 1} 生成失败", None
+                return f"❌ 重新生成第 {slot_index + 1} 张图片失败", None
                 
         except Exception as e:
             return f"❌ 生成失败：{str(e)}", None
 
-    # 修改批量生成函数，同时更新槽位可见性
     def batch_generate_images_direct(self, reference_image, ip_adapter_path: str, base_model: str, 
                                     image_encoder_path: str, image_encoder_2_path: str, use_offload: bool, 
                                     steps: int, guidance_scale: float, subject_scale: float, 
                                     progress=gr.Progress()):
-        """直接批量生成图片，返回PIL Image对象和槽位可见性"""
+        """直接批量生成图片，返回PIL Image对象"""
         try:
             if not self.current_project_dir:
-                # 返回错误状态 + 10个None图片 + 10个False可见性
-                return ["❌ 请先生成内容"] + [None] * 10 + [gr.update(visible=False)] * 10
+                return ["❌ 请先生成内容"] + [None] * 10
             
             if not self.current_prompts:
-                return ["❌ 没有找到提示词，请先生成内容"] + [None] * 10 + [gr.update(visible=False)] * 10
+                return ["❌ 没有找到提示词，请先生成内容"] + [None] * 10
             
             if reference_image is None:
-                return ["❌ 请上传角色一致性参考图"] + [None] * 10 + [gr.update(visible=False)] * 10
+                return ["❌ 请上传角色一致性参考图"] + [None] * 10
             
             # 保存参考图
             ref_image_path = self.current_project_dir / "reference_image.png"
@@ -464,7 +466,7 @@ class VideoGenerationPipeline:
                 image_encoder_2_path, use_offload
             )
             if not success:
-                return [f"❌ {message}"] + [None] * 10 + [gr.update(visible=False)] * 10
+                return [f"❌ {message}"] + [None] * 10
             
             # 创建输出目录
             images_dir = self.current_project_dir / "generated_images"
@@ -472,7 +474,6 @@ class VideoGenerationPipeline:
             
             # 生成图片
             slot_images = [None] * 10
-            slot_visibility = []
             generated_count = 0
             total_prompts = len(self.current_prompts)
             
@@ -508,25 +509,15 @@ class VideoGenerationPipeline:
                     print(f"生成第 {i + 1} 张图片时出错: {e}")
                     continue
             
-            # 设置槽位可见性
-            for i in range(10):
-                if i < total_prompts:
-                    slot_visibility.append(gr.update(visible=True))
-                else:
-                    slot_visibility.append(gr.update(visible=False))
-            
             progress(1.0, desc="🎉 图片生成完成！")
             status = f"🎉 图片生成完成！成功生成 {generated_count}/{total_prompts} 张图片"
-            
-            # 返回状态 + 图片 + 可见性更新
-            return [status] + slot_images + slot_visibility
+            return [status] + slot_images
             
         except Exception as e:
             print(f"批量生成出错: {e}")
             import traceback
             traceback.print_exc()
-            return [f"❌ 生成失败：{str(e)}"] + [None] * 10 + [gr.update(visible=False)] * 10
-
+            return [f"❌ 生成失败：{str(e)}"] + [None] * 10
 
     def validate_images_with_vlm(self, api_key: str, base_url: str, model_name: str, 
                                 progress=gr.Progress()) -> Tuple[str, List[Dict]]:
@@ -659,7 +650,7 @@ def create_interface():
                 with gr.Column(scale=1):
                     scene_count = gr.Slider(
                         minimum=3,
-                        maximum=20,
+                        maximum=10,
                         value=5,
                         step=1,
                         label="场景数量"
@@ -832,31 +823,32 @@ def create_interface():
             image_slot_components = []
             for i in range(10):
                 with gr.Row(visible=False) as slot_row:
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=3):
                         slot_prompt = gr.Textbox(
                             label=f"场景 {i+1} 提示词",
                             lines=2,
                             placeholder="可以修改提示词后重新生成单张图片"
                         )
                     
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=2):
                         slot_image = gr.Image(
                             label=f"场景 {i+1}",
-                            type="pil",  # 使用pil类型
+                            type="pil",
                             height=200
                         )
                     
                     with gr.Column(scale=1):
                         slot_generate_btn = gr.Button(
-                            f"🎨 生成第{i+1}张",
+                            f"🎨 重新生成第{i+1}张",
                             variant="secondary",
-                            size="sm"
+                            size="lg"  # 增大按钮
                         )
                         
                         slot_status = gr.Textbox(
                             label="状态",
                             lines=1,
-                            interactive=False
+                            interactive=False,
+                            value="⏳ 等待生成"  # 默认状态
                         )
                 
                 image_slot_components.append({
@@ -926,12 +918,15 @@ def create_interface():
         
         def update_image_slots_visibility(count):
             """根据场景数量显示对应数量的图片槽位"""
+            print(f"更新槽位可见性，场景数量: {count}")  # 调试输出
             updates = []
             for i in range(10):  # 只处理10个槽位
                 if i < count:
                     updates.append(gr.update(visible=True))
+                    print(f"槽位 {i+1}: 可见")  # 调试输出
                 else:
                     updates.append(gr.update(visible=False))
+                    print(f"槽位 {i+1}: 隐藏")  # 调试输出
             return updates
         
         def update_slots_with_prompts():
@@ -947,14 +942,30 @@ def create_interface():
                     updates.append(gr.update())
             return updates
         
+        def reset_slot_status():
+            """重置所有槽位状态为等待生成"""
+            status_updates = []
+            for i in range(10):
+                if i < len(pipeline.current_prompts):
+                    status_updates.append(gr.update(value="⏳ 等待生成"))
+                else:
+                    status_updates.append(gr.update())
+            return status_updates
+        
+        def update_slot_status_batch_complete():
+            """批量生成完成后更新槽位状态"""
+            status_updates = []
+            for i in range(10):
+                if i < len(pipeline.current_prompts):
+                    status_updates.append(gr.update(value="✅ 生成完成"))
+                else:
+                    status_updates.append(gr.update())
+            return status_updates
+        
         scene_count.change(
             fn=update_scene_count, 
             inputs=[scene_count], 
             outputs=[current_scene_count]
-        ).then(
-            fn=update_image_slots_visibility,
-            inputs=[scene_count],
-            outputs=[slot["row"] for slot in image_slot_components]
         )
         
         # 生成内容
@@ -965,6 +976,13 @@ def create_interface():
         ).then(
             fn=update_slots_with_prompts,
             outputs=[slot["prompt"] for slot in image_slot_components]
+        ).then(
+            fn=update_image_slots_visibility,
+            inputs=[scene_count],
+            outputs=[slot["row"] for slot in image_slot_components]
+        ).then(
+            fn=reset_slot_status,
+            outputs=[slot["status"] for slot in image_slot_components]
         )
         
         # 保存编辑
@@ -975,6 +993,17 @@ def create_interface():
         ).then(
             fn=update_slots_with_prompts,
             outputs=[slot["prompt"] for slot in image_slot_components]
+        ).then(
+            fn=lambda prompts_text: len([p for p in prompts_text.split('\n') if p.strip()]),
+            inputs=[img_prompts],
+            outputs=[current_scene_count]
+        ).then(
+            fn=update_image_slots_visibility,
+            inputs=[current_scene_count],
+            outputs=[slot["row"] for slot in image_slot_components]
+        ).then(
+            fn=reset_slot_status,
+            outputs=[slot["status"] for slot in image_slot_components]
         )
         
         # 重新生成
@@ -985,18 +1014,26 @@ def create_interface():
         ).then(
             fn=update_slots_with_prompts,
             outputs=[slot["prompt"] for slot in image_slot_components]
+        ).then(
+            fn=update_image_slots_visibility,
+            inputs=[scene_count],
+            outputs=[slot["row"] for slot in image_slot_components]
+        ).then(
+            fn=reset_slot_status,
+            outputs=[slot["status"] for slot in image_slot_components]
         )
         
-        # 批量生成图片 - 同时更新图片和可见性
+        # 批量生成图片
         batch_generate_btn.click(
             fn=pipeline.batch_generate_images_direct,
             inputs=[reference_image, ip_adapter_path, base_model, image_encoder_path, 
-                image_encoder_2_path, use_offload, steps, guidance_scale, subject_scale],
-            outputs=[image_generation_status] + [slot["image"] for slot in image_slot_components] + 
-                    [slot["row"] for slot in image_slot_components],
+                   image_encoder_2_path, use_offload, steps, guidance_scale, subject_scale],
+            outputs=[image_generation_status] + [slot["image"] for slot in image_slot_components],
             show_progress=True
+        ).then(
+            fn=update_slot_status_batch_complete,
+            outputs=[slot["status"] for slot in image_slot_components]
         )
-
         
         # 单张图片生成
         def create_single_generate_function(slot_index):
