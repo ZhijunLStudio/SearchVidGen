@@ -1,55 +1,23 @@
 {
   "system_prompts": {
-    "content_generation": "你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。你擅长创建连贯的故事叙事，深谙视觉艺术的表达技巧，能够将抽象的概念转化为具体的视觉场景。你的作品总是能够抓住观众的注意力，传递深刻的情感和信息。",
-    
-    "image_validation": "你是一位专业的图像分析师和视觉内容评估专家。你具备敏锐的艺术鉴赏能力，能够准确识别图像中的各种元素，包括人物、场景、动作、情感表达、构图、色彩、光线等。你能够客观地评估图像质量，并提供专业的改进建议。",
-    
-    "video_prompt_generation": "你是一位专业的视频制作专家和镜头语言大师。你深刻理解电影语言，熟悉各种镜头运动、构图技巧、剪辑节奏。你能够将静态的图像转化为动态的视频概念，创造引人入胜的视觉故事。"
+    "content_generation": "你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。",
+    "image_validation": "You are shown a single image. Based solely on its visual details, write one cohesive English paragraph of at least 50 words describing exactly what actions the people in the scene are performing or are about to perform. Focus on their movements, gestures, facial expressions, interactions with objects or each other, and how the environment responds (e.g. wind, light, surfaces). Do NOT use bullet points, labels (like 'Subject:' or 'Scene:'), or mention time spans or durations."
   },
   
-  "content_generation_templates": {
-    "basic_structure": "请根据搜索词\"{search_query}\"，为我生成一个引人入胜的短视频的完整内容方案，共{scene_count}个场景。",
-    
-    "narrative_principles": [
-      "叙事连贯性：所有场景必须构成一个完整、连贯的故事或逻辑流程",
-      "时序一致性：场景必须遵循严格的、不可逆转的时间顺序",
-      "情感递进：每个场景的情感强度应该有所变化，形成起承转合的节奏",
-      "视觉统一：保持统一的视觉风格和角色设计",
-      "主题突出：每个场景都应该服务于整体主题的表达"
-    ],
-    
-    "style_prefix": "Anime style, high quality, consistent character design, detailed background, cinematic lighting, ",
-    
-    "prompt_requirements": {
-      "image_prompts": {
-        "language": "英文",
-        "word_count": "40-60个单词",
-        "must_include": ["主体描述", "场景描述", "动作描述", "镜头语言", "氛围描述"],
-        "style_consistency": "必须以指定风格前缀开头"
-      },
-      
-      "video_prompts": {
-        "language": "英文", 
-        "word_count": "50-80个单词",
-        "must_include": ["镜头运动描述", "动态变化", "环境响应", "情感表达"],
-        "camera_movements": ["slow push-in shot", "tracking shot", "dolly movement", "pan", "tilt", "zoom", "crane shot", "handheld camera"]
-      },
-      
-      "narrations": {
-        "language": "中文",
-        "word_limit": "每段不超过15个中文字",
-        "tone": "简洁有力，富有感染力",
-        "matching": "与对应场景内容和情绪紧密匹配"
-      }
-    }
-  },
+  "validation_prompt": "You are shown a single image. Based solely on its visual details, write one cohesive English paragraph of at least 50 words describing exactly what actions the people in the scene are performing or are about to perform. Focus on their movements, gestures, facial expressions, interactions with objects or each other, and how the environment responds (e.g. wind, light, surfaces). Do NOT use bullet points, labels (like 'Subject:' or 'Scene:'), or mention time spans or durations.",
+  
+  "style_prefix": "Anime style, high quality, consistent character design, ",
+  
+  "content_generation_template": "你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。\n请根据搜索词\"{search_query}\"，为我生成一个引人入胜的短视频的完整内容方案，共{scene_count}个场景。\n\n## 核心叙事原则：\n1. 叙事连贯性：所有{scene_count}个场景必须构成一个完整、连贯的故事\n2. 时序一致性：场景必须遵循严格的时间顺序\n3. 情感递进：每个场景的情感强度应该有所变化，形成起承转合的节奏\n4. 视觉统一：保持统一的视觉风格和角色设计\n5. 主题突出：每个场景都应该服务于整体主题的表达\n\n## 生成内容要求：\n\n### 1. 图片生成提示词（{scene_count}个场景）\n- 每个提示词用英文编写，长度在40-60个单词之间\n- 必须以\"{style_prefix}\"开头\n- 包含详细的主体描述、场景描述、动作描述、镜头语言和氛围描述\n- 例如：\"{style_prefix}a young girl with long silver hair standing in a cherry blossom garden, looking up at falling petals with wonder, soft pink lighting, medium shot, peaceful spring atmosphere\"\n\n### 2. 视频生成提示词（{scene_count}个场景）\n- 每个提示词用英文编写，长度在50-80个单词之间\n- 必须以\"{style_prefix}\"开头\n- 必须包含具体的镜头运动描述（如slow push-in shot, tracking shot, dolly movement等）\n- 例如：\"{style_prefix}slow push-in shot, a young girl with long silver hair standing in a cherry blossom garden, petals falling and swirling around her as she spins gracefully, soft pink lighting creating dreamy atmosphere, camera slowly zooming towards her joyful expression\"\n\n### 3. 旁白文本（{scene_count}段）\n- 每段不超过15个中文字\n- 语言简洁有力，富有感染力\n- 与对应场景内容和情绪紧密匹配\n\n### 4. 视频业务点\n- 3-5个核心价值点或故事主旨\n- 中文描述，每点一行\n\n### 5. 服务概述\n- 100字以内的中文描述\n- 说明视频的整体故事、价值和目标受众\n\n请严格按照以下JSON格式返回，不要有任何额外的解释或说明：\n```json\n{{\n    \"img2img_prompts\": [\n        \"{style_prefix}detailed scene 1 description with subject, action, environment, mood...\",\n        \"{style_prefix}detailed scene 2 description with subject, action, environment, mood...\",\n        \"...\"\n    ],\n    \"img2vid_prompts\": [\n        \"{style_prefix}camera movement + detailed scene 1 with motion and dynamics...\",\n        \"{style_prefix}camera movement + detailed scene 2 with motion and dynamics...\",\n        \"...\"\n    ],\n    \"narrations\": [\n        \"简洁有力的旁白1\",\n        \"简洁有力的旁白2\",\n        \"...\"\n    ],\n    \"business_points\": \"核心价值点1\\n核心价值点2\\n核心价值点3\",\n    \"service_overview\": \"100字以内的整体服务概述...\"\n}}```",
   
   "validation_prompts": {
-    "image_content_analysis": "请仔细观察这张图片，详细描述以下内容：\n1. 图片中的主要人物或角色（外观特征、表情、姿势）\n2. 场景环境（背景、道具、氛围）\n3. 动作和行为（正在进行的活动）\n4. 整体构图和视觉效果\n5. 情感表达和故事感",
+    "image_content_analysis": "You are shown a single image. Based solely on its visual details, write one cohesive English paragraph of at least 50 words describing exactly what actions the people in the scene are performing or are about to perform. Focus on their movements, gestures, facial expressions, interactions with objects or each other, and how the environment responds (e.g. wind, light, surfaces). Do NOT use bullet points, labels (like 'Subject:' or 'Scene:'), or mention time spans or durations.",
     
-    "prompt_consistency_check": "请将这张图片与以下提示词进行对比分析：\n\n提示词：{prompt}\n\n请评估：\n1. 图片内容是否与提示词描述一致？\n2. 哪些元素体现得很好？\n3. 哪些元素缺失或不够准确？\n4. 角色一致性如何？\n5. 整体质量评分（1-10分）并说明理由",
-    
-    "improvement_suggestions": "基于上述分析，请提供具体的改进建议：\n1. 如何优化提示词以获得更好的结果？\n2. 哪些关键词需要加强或调整？\n3. 是否建议重新生成？\n请提供可操作的具体建议。"
+    "success_criteria": {
+      "min_word_count": 50,
+      "required_elements": ["action", "movement", "gesture", "expression", "interaction"],
+      "forbidden_patterns": ["Subject:", "Scene:", "bullet", "•", "-", "*"]
+    }
   },
   
   "error_messages": {
@@ -69,61 +37,5 @@
     "images_generated": "✅ 图片生成完成",
     "validation_completed": "✅ 验证完成",
     "project_exported": "✅ 项目导出成功"
-  },
-  
-  "ui_labels": {
-    "tabs": {
-      "content_generation": "📝 内容生成",
-      "image_generation": "🎨 图片生成", 
-      "validation": "🔍 多模态验证",
-      "project_management": "📊 项目管理"
-    },
-    
-    "sections": {
-      "basic_config": "🔧 基础配置",
-      "llm_config": "🤖 语言模型配置",
-      "generation_results": "📊 生成结果",
-      "model_config": "⚙️ 模型配置",
-      "generation_params": "🔧 生成参数"
-    },
-    
-    "buttons": {
-      "generate_content": "🚀 生成内容",
-      "save_edits": "💾 保存编辑",
-      "regenerate": "🔄 重新生成",
-      "generate_images": "🎨 开始生成图片",
-      "validate": "🔍 开始验证",
-      "refresh_project": "🔄 刷新项目信息",
-      "export_project": "📦 导出项目"
-    }
-  },
-  
-  "tips": {
-    "search_query": "输入富有创意的主题，如：春天在哪里、奇幻森林的秘密、都市夜晚的温暖等",
-    "scene_count": "建议5-10个场景，既能讲好故事又不会过于复杂",
-    "reference_image": "建议使用清晰的角色正面照，背景简洁，有利于保持一致性",
-    "regeneration": "描述具体的不满意之处，如：'角色表情不够生动'、'场景转换不够自然'等",
-    "validation": "验证结果将帮助您了解生成图片的质量，并提供改进建议"
-  },
-  
-  "workflows": {
-    "complete_pipeline": [
-      "1. 输入搜索词和场景数量",
-      "2. 配置语言模型API",
-      "3. 生成并编辑五种内容",
-      "4. 上传角色参考图",
-      "5. 配置图片生成模型",
-      "6. 生成场景图片",
-      "7. 使用VLM验证图片质量",
-      "8. 根据验证结果优化"
-    ],
-    
-    "quick_start": [
-      "1. 输入主题词",
-      "2. 填写API配置",
-      "3. 点击生成内容",
-      "4. 上传参考图生成图片"
-    ]
   }
 }
-

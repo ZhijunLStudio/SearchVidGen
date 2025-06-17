@@ -52,7 +52,62 @@ class VideoGenerationPipeline:
                 "content_generation": "你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。",
                 "image_validation": "你是一位专业的图像分析师，请仔细观察图像内容。"
             },
-            "validation_prompt": "请分析这张图片，描述图片中的主要内容、场景、人物动作和情感表达。判断是否符合预期的提示词要求。"
+            "validation_prompt": "请分析这张图片，描述图片中的主要内容、场景、人物动作和情感表达。判断是否符合预期的提示词要求。",
+            "style_prefix": "Anime style, high quality, consistent character design, ",
+            "content_generation_template": """
+你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。
+请根据搜索词"{search_query}"，为我生成一个引人入胜的短视频的完整内容方案，共{scene_count}个场景。
+
+## 核心叙事原则：
+1. 叙事连贯性：所有{scene_count}个场景必须构成一个完整、连贯的故事
+2. 时序一致性：场景必须遵循严格的时间顺序
+
+## 生成内容要求：
+
+### 1. 图片生成提示词（{scene_count}个场景）
+- 每个提示词用英文编写，长度在40-60个单词之间
+- 必须以"{style_prefix}"开头
+- 包含详细的主体、场景、动作、镜头语言和氛围描述
+
+### 2. 视频生成提示词（{scene_count}个场景）
+- 每个提示词用英文编写，长度在50-80个单词之间
+- 必须以"{style_prefix}"开头
+- 必须包含具体的镜头运动描述
+
+### 3. 旁白文本（{scene_count}段）
+- 每段不超过15个中文字
+- 语言简洁有力，富有感染力
+
+### 4. 视频业务点
+- 3-5个核心价值点或故事主旨
+- 中文描述
+
+### 5. 服务概述
+- 100字以内的中文描述
+- 说明视频的整体故事、价值和目标受众
+
+请严格按照以下JSON格式返回：
+```json
+{{
+    "img2img_prompts": [
+        "{style_prefix}场景1...",
+        "{style_prefix}场景2...",
+        ...
+    ],
+    "img2vid_prompts": [
+        "{style_prefix}镜头运动 + 场景1...",
+        "{style_prefix}镜头运动 + 场景2...",
+        ...
+    ],
+    "narrations": [
+        "旁白1",
+        "旁白2",
+        ...
+    ],
+    "business_points": "业务点描述...",
+    "service_overview": "服务概述..."
+}}```
+"""
         }
         
         if not config_path.exists():
@@ -139,62 +194,14 @@ class VideoGenerationPipeline:
 
     def _build_custom_prompt(self, search_query: str, scene_count: int) -> str:
         """构建自定义场景数量的prompt"""
-        style_prefix = "Anime style, high quality, consistent character design, "
+        style_prefix = self.prompts_config.get("style_prefix", "Anime style, high quality, consistent character design, ")
+        template = self.prompts_config.get("content_generation_template", "")
         
-        return f"""
-你是一位专业的短视频剧本家和AI绘画/视频提示词工程师。
-请根据搜索词"{search_query}"，为我生成一个引人入胜的短视频的完整内容方案，共{scene_count}个场景。
-
-## 核心叙事原则：
-1. 叙事连贯性：所有{scene_count}个场景必须构成一个完整、连贯的故事
-2. 时序一致性：场景必须遵循严格的时间顺序
-
-## 生成内容要求：
-
-### 1. 图片生成提示词（{scene_count}个场景）
-- 每个提示词用英文编写，长度在40-60个单词之间
-- 必须以"{style_prefix}"开头
-- 包含详细的主体、场景、动作、镜头语言和氛围描述
-
-### 2. 视频生成提示词（{scene_count}个场景）
-- 每个提示词用英文编写，长度在50-80个单词之间
-- 必须以"{style_prefix}"开头
-- 必须包含具体的镜头运动描述
-
-### 3. 旁白文本（{scene_count}段）
-- 每段不超过15个中文字
-- 语言简洁有力，富有感染力
-
-### 4. 视频业务点
-- 3-5个核心价值点或故事主旨
-- 中文描述
-
-### 5. 服务概述
-- 100字以内的中文描述
-- 说明视频的整体故事、价值和目标受众
-
-请严格按照以下JSON格式返回：
-```json
-{{
-    "img2img_prompts": [
-        "{style_prefix}场景1...",
-        "{style_prefix}场景2...",
-        ...
-    ],
-    "img2vid_prompts": [
-        "{style_prefix}镜头运动 + 场景1...",
-        "{style_prefix}镜头运动 + 场景2...",
-        ...
-    ],
-    "narrations": [
-        "旁白1",
-        "旁白2",
-        ...
-    ],
-    "business_points": "业务点描述...",
-    "service_overview": "服务概述..."
-}}```
-"""
+        return template.format(
+            search_query=search_query,
+            scene_count=scene_count,
+            style_prefix=style_prefix
+        )
 
     def _parse_generated_content(self, content: str, scene_count: int) -> Dict[str, Any]:
         """解析生成的内容"""
@@ -221,9 +228,10 @@ class VideoGenerationPipeline:
             
         except Exception as e:
             # 返回默认数据
+            style_prefix = self.prompts_config.get("style_prefix", "Anime style, ")
             return {
-                "img2img_prompts": [f"Anime style scene {i+1}" for i in range(scene_count)],
-                "img2vid_prompts": [f"Anime style video scene {i+1}" for i in range(scene_count)],
+                "img2img_prompts": [f"{style_prefix}scene {i+1}" for i in range(scene_count)],
+                "img2vid_prompts": [f"{style_prefix}video scene {i+1}" for i in range(scene_count)],
                 "narrations": [f"旁白{i+1}" for i in range(scene_count)],
                 "business_points": "默认业务点",
                 "service_overview": "默认服务概述"
@@ -381,10 +389,11 @@ class VideoGenerationPipeline:
                 return "❌ 请上传角色一致性参考图", None
             
             # 使用自定义提示词或默认提示词
+            style_prefix = self.prompts_config.get("style_prefix", "Anime style, ")
             if slot_index < len(self.current_prompts):
                 prompt = custom_prompt.strip() if custom_prompt.strip() else self.current_prompts[slot_index]
             else:
-                prompt = custom_prompt.strip() if custom_prompt.strip() else f"Anime style scene {slot_index + 1}"
+                prompt = custom_prompt.strip() if custom_prompt.strip() else f"{style_prefix}scene {slot_index + 1}"
             
             # 保存参考图到项目目录
             ref_image_path = self.current_project_dir / "reference_image.png"
@@ -556,11 +565,21 @@ class VideoGenerationPipeline:
                     # 获取对应的提示词
                     prompt = self.current_prompts[i] if i < len(self.current_prompts) else "Unknown prompt"
                     
-                    # 验证单张图片
-                    result = self.vlm_validator.validate_single_image(
-                        image_path=str(image_path),
-                        original_prompt=prompt
-                    )
+                    # 验证单张图片 - 修复参数传递
+                    # 检查VLMValidator的validate_single_image方法签名
+                    try:
+                        # 尝试新的调用方式（不传递original_prompt）
+                        result = self.vlm_validator.validate_single_image(str(image_path))
+                    except TypeError:
+                        # 如果上面失败，尝试传递prompt作为第二个参数
+                        try:
+                            result = self.vlm_validator.validate_single_image(str(image_path), prompt)
+                        except:
+                            # 如果都失败，使用最基础的验证
+                            result = {
+                                "success": False,
+                                "error": "VLMValidator方法签名不兼容"
+                            }
                     
                     if result["success"]:
                         validation_data = {
@@ -591,10 +610,10 @@ class VideoGenerationPipeline:
                     validation_data = {
                         "index": i + 1,
                         "image_path": str(image_path),
-                        "original_prompt": prompt,
+                        "original_prompt": prompt if 'prompt' in locals() else "Unknown prompt",
                         "analysis": f"验证出错: {str(e)}",
                         "score": 0,
-                        "suggestions": "请检查配置重新验证",
+                        "suggestions": "请检查VLMValidator配置",
                         "compliance": "error",
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
@@ -607,8 +626,8 @@ class VideoGenerationPipeline:
             
             progress(1.0, "验证完成！")
             
-            # 生成状态报告
-            successful_count = len([r for r in validation_results if r["compliance"] not in ["error", "unknown"]])
+            # 统计成功验证的图片数量（检查是否有描述内容）
+            successful_count = sum(1 for result in validation_results if result.get("description") and len(result.get("description", "")) > 50)
             status_report = f"✅ 图片验证完成！验证了 {len(validation_results)} 张图片，{successful_count} 张成功"
             
             return status_report, validation_results
