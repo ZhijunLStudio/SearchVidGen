@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 # 导入自定义模块
 try:
     from src.llm_client import LLMClient
-    from src.image_generate_class import ImageGenerator
+    from src.image_generator import ImageGenerator
     from src.vlm_validator import VLMValidator
 except ImportError as e:
     print(f"⚠️ 导入模块失败: {e}")
