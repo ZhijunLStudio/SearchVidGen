@@ -1,384 +1,304 @@
 import os
-import random
-import torch
 from pathlib import Path
 from PIL import Image
+import requests
+import io
+import base64
+import torch
 from datetime import datetime
-import logging
-from typing import Dict, List, Any, Optional, Tuple
+import re # Import re for safe folder naming
 
-# 设置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Make sure 'pipeline' is discoverable (e.g., in the same directory or in PYTHONPATH)
+# Assuming pipeline.py contains InstantCharacterFluxPipeline
+from pipeline import InstantCharacterFluxPipeline
+from diffusers.hooks import apply_group_offloading
 
-try:
-    from pipeline import InstantCharacterFluxPipeline
-    from diffusers.hooks import apply_group_offloading
-    FLUX_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"Flux模型相关依赖导入失败: {e}")
-    FLUX_AVAILABLE = False
 
 class ImageGenerator:
-    def __init__(self, model_type: str = "flux", use_offload: bool = True):
+    def __init__(self, model_type: str = "placeholder"):
         """
         初始化图片生成器
-        
-        Args:
-            model_type: 模型类型，目前支持 "flux" 和 "placeholder"
-            use_offload: 是否使用模型卸载（节省显存）
+        model_type: 可以是 "placeholder", "stable_diffusion", "flux" 等
         """
         self.model_type = model_type
-        self.use_offload = use_offload
-        self.pipe = None
-        self.is_initialized = False
-        
-        # 默认配置
-        self.ip_adapter_path = '/data/home/lizhijun/llm/flux-hf/InstantCharacter-main/tencent/InstantCharacter/instantcharacter_ip-adapter.bin'
-        self.base_model = '/data/home/lizhijun/llm/flux-hf/model/flux-dev'
-        self.image_encoder_path = 'google/siglip-so400m-patch14-384'
-        self.image_encoder_2_path = 'facebook/dinov2-giant'
-        
-        logger.info(f"ImageGenerator initialized with model_type='{model_type}', use_offload={use_offload}")
 
-    def initialize_model(self):
-        """初始化模型"""
-        if self.is_initialized:
-            logger.info("模型已初始化，跳过")
-            return True
-            
+        # For 'flux' model, initialize it here since it's heavy and shared
         if self.model_type == "flux":
-            return self._initialize_flux_model()
-        elif self.model_type == "placeholder":
-            logger.info("使用占位符模式，无需初始化模型")
-            self.is_initialized = True
-            return True
-        else:
-            raise ValueError(f"不支持的模型类型: {self.model_type}")
+            # Configuration for Flux model
+            self.ip_adapter_path = '/data/home/lizhijun/llm/flux-hf/InstantCharacter-main/tencent/InstantCharacter/instantcharacter_ip-adapter.bin'
+            self.base_model = '/data/home/lizhijun/llm/flux-hf/model/flux-dev'
+            self.image_encoder_path = 'google/siglip-so400m-patch14-384'
+            self.image_encoder_2_path = 'facebook/dinov2-giant'
 
-    def _initialize_flux_model(self):
-        """初始化Flux模型"""
-        if not FLUX_AVAILABLE:
-            logger.error("Flux模型依赖不可用，请检查安装")
-            return False
-            
-        try:
-            logger.info("正在初始化Flux模型...")
-            
-            # 检查模型文件是否存在
-            if not os.path.exists(self.base_model):
-                logger.error(f"基础模型路径不存在: {self.base_model}")
-                return False
-                
-            if not os.path.exists(self.ip_adapter_path):
-                logger.error(f"IP Adapter路径不存在: {self.ip_adapter_path}")
-                return False
-            
-            # 加载模型
-            self.pipe = InstantCharacterFluxPipeline.from_pretrained(
-                self.base_model, 
-                torch_dtype=torch.bfloat16
-            )
-            
-            # 应用offload优化
-            if self.use_offload:
-                logger.info("应用模型卸载优化...")
-                self._apply_offloading()
-            else:
-                logger.info("将模型加载到CUDA...")
-                self.pipe.to("cuda")
-            
-            # 初始化适配器
-            logger.info("初始化IP Adapter...")
-            self.pipe.init_adapter(
-                image_encoder_path=self.image_encoder_path,
-                image_encoder_2_path=self.image_encoder_2_path,
-                subject_ipadapter_cfg=dict(
-                    subject_ip_adapter_path=self.ip_adapter_path, 
-                    nb_token=1024
-                ),
-            )
-            
-            self.is_initialized = True
-            logger.info("Flux模型初始化完成")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Flux模型初始化失败: {e}")
-            return False
+            print("Initializing Flux model...")
+            # Check if model is already loaded to prevent re-initialization in case of multiple calls
+            if not hasattr(self, 'pipe') or self.pipe is None:
+                self.pipe = InstantCharacterFluxPipeline.from_pretrained(self.base_model, torch_dtype=torch.bfloat16)
 
-    def _apply_offloading(self):
-        """应用模型卸载优化"""
-        try:
-            # 为各个组件应用offload
-            components = [
-                ("transformer", self.pipe.transformer),
-                ("text_encoder", self.pipe.text_encoder),
-                ("text_encoder_2", self.pipe.text_encoder_2),
-                ("vae", self.pipe.vae)
-            ]
-            
-            for name, component in components:
-                if component is not None:
-                    logger.info(f"应用offload到 {name}")
-                    apply_group_offloading(
-                        component,
-                        offload_type="leaf_level",
-                        offload_device=torch.device("cpu"),
-                        onload_device=torch.device("cuda"),
-                        use_stream=True,
-                    )
-                    
-        except Exception as e:
-            logger.warning(f"应用offload优化失败: {e}")
-            # 如果offload失败，回退到普通CUDA加载
-            logger.info("回退到普通CUDA加载")
-            self.pipe.to("cuda")
+                # Apply model optimizations
+                apply_group_offloading(
+                    self.pipe.transformer,
+                    offload_type="leaf_level",
+                    offload_device=torch.device("cpu"),
+                    onload_device=torch.device("cuda"),
+                    use_stream=True,
+                )
+                apply_group_offloading(
+                    self.pipe.text_encoder,
+                    offload_device=torch.device("cpu"),
+                    onload_device=torch.device("cuda"),
+                    offload_type="leaf_level",
+                    use_stream=True,
+                )
+                apply_group_offloading(
+                    self.pipe.text_encoder_2,
+                    offload_device=torch.device("cpu"),
+                    onload_device=torch.device("cuda"),
+                    offload_type="leaf_level",
+                    use_stream=True,
+                )
+                apply_group_offloading(
+                    self.pipe.vae,
+                    offload_device=torch.device("cpu"),
+                    onload_device=torch.device("cuda"),
+                    offload_type="leaf_level",
+                    use_stream=True,
+                )
 
-    def update_config(self, **kwargs):
-        """更新配置"""
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-                logger.info(f"更新配置: {key} = {value}")
-        
-        # 如果模型已初始化且配置有变化，需要重新初始化
-        if self.is_initialized and self.model_type == "flux":
-            logger.info("配置已更新，重新初始化模型")
-            self.is_initialized = False
-            self.pipe = None
+                self.pipe.init_adapter(
+                    image_encoder_path=self.image_encoder_path,
+                    image_encoder_2_path=self.image_encoder_2_path,
+                    subject_ipadapter_cfg=dict(subject_ip_adapter_path=self.ip_adapter_path, nb_token=1024),
+                )
+            print("Flux model initialized.")
 
-    def generate(self, prompt: str, reference_image: str = None, 
+
+    def generate(self, prompt: str, reference_image: str = None,
                 output_path: Path = None, **kwargs) -> Path:
         """
         生成图片
-        
+
         Args:
             prompt: 图片生成提示词
-            reference_image: 参考图片路径
+            reference_image: 参考图片路径（可选）
             output_path: 输出路径
-            **kwargs: 其他参数
-            
+            **kwargs: 其他参数（如size, steps等）
+
         Returns:
             生成的图片路径
         """
-        # 确保模型已初始化
-        if not self.initialize_model():
-            raise RuntimeError("模型初始化失败")
-        
-        # 设置输出路径
         if output_path is None:
+            # Generate a default unique name if not provided
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             output_path = Path(f"generated_image_{timestamp}.png")
-        
+
         output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # 根据模型类型生成图片
+        output_path.parent.mkdir(parents=True, exist_ok=True) # Ensure output directory exists
+
         if self.model_type == "placeholder":
+            # 生成占位图片
             return self._generate_placeholder(prompt, output_path)
+        elif self.model_type == "stable_diffusion":
+            # 调用Stable Diffusion API (placeholder for actual implementation)
+            return self._generate_placeholder(prompt, output_path) # Fallback to placeholder
         elif self.model_type == "flux":
+            # 调用Flux模型
             return self._generate_with_flux(prompt, reference_image, output_path, **kwargs)
         else:
             raise ValueError(f"不支持的模型类型: {self.model_type}")
 
     def _generate_placeholder(self, prompt: str, output_path: Path) -> Path:
         """生成占位图片"""
-        try:
-            img = Image.new('RGB', (832, 480), color='lightblue')
-            
-            # 添加文字
-            try:
-                from PIL import ImageDraw, ImageFont
-                draw = ImageDraw.Draw(img)
-                
-                try:
-                    font = ImageFont.truetype("arial.ttf", 20)
-                except (OSError, IOError):
-                    font = ImageFont.load_default()
-                
-                # 绘制提示词
-                text_lines = [
-                    "占位图片 / Placeholder Image",
-                    f"提示词: {prompt[:30]}...",
-                    f"输出: {output_path.name}",
-                    f"时间: {datetime.now().strftime('%H:%M:%S')}"
-                ]
-                
-                y_offset = 10
-                for line in text_lines:
-                    draw.text((10, y_offset), line, fill='black', font=font)
-                    y_offset += 30
-                    
-            except ImportError:
-                logger.warning("PIL ImageDraw不可用，生成空白占位图")
-            
-            img.save(output_path)
-            logger.info(f"占位图片已保存: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"生成占位图片失败: {e}")
-            raise
+        # 创建一个简单的占位图片
+        img = Image.new('RGB', (832, 480), color='lightblue')
 
-    def _generate_with_flux(self, prompt: str, reference_image: str, 
+        # 添加文字（需要PIL的ImageDraw和ImageFont）
+        try:
+            from PIL import ImageDraw, ImageFont
+            draw = ImageDraw.Draw(img)
+
+            # 尝试使用系统字体
+            try:
+                # Use a common cross-platform font name if available, or specify a path
+                font = ImageFont.truetype("arial.ttf", 20)
+            except IOError:
+                font = ImageFont.load_default()
+
+            # 绘制提示词
+            text = f"Placeholder\n{prompt[:50]}..."
+            draw.text((10, 10), text, fill='black', font=font)
+        except ImportError:
+            # If ImageDraw/ImageFont are not available, just save blank image
+            pass
+
+        img.save(output_path)
+        return output_path
+
+    def _generate_with_sd(self, prompt: str, reference_image: str,
+                         output_path: Path, **kwargs) -> Path:
+        """使用Stable Diffusion生成图片"""
+        # Placeholder for actual SD API integration
+        # Example of how to structure an API call:
+        # api_url = "YOUR_SD_API_ENDPOINT"
+        # headers = {"Content-Type": "application/json"}
+        # payload = {
+        #     "prompt": prompt,
+        #     "reference_image_base64": base64.b64encode(open(reference_image, "rb").read()).decode('utf-8') if reference_image else None,
+        #     **kwargs
+        # }
+        # response = requests.post(api_url, headers=headers, json=payload)
+        # response.raise_for_status()
+        # image_bytes = base64.b64decode(response.json()['image_base64'])
+        # image = Image.open(io.BytesIO(image_bytes))
+        # image.save(output_path)
+        # return output_path
+        print("Stable Diffusion generation is a placeholder; generating a placeholder image.")
+        return self._generate_placeholder(prompt, output_path)
+
+
+    def _generate_with_flux(self, prompt: str, reference_image: str,
                            output_path: Path, **kwargs) -> Path:
         """使用Flux模型生成图片"""
-        if not self.is_initialized:
-            raise RuntimeError("Flux模型未初始化")
-        
-        try:
-            # 处理参考图片
+        if not hasattr(self, 'pipe') or self.pipe is None:
+            raise RuntimeError("Flux model not initialized. Please set model_type to 'flux' during ImageGenerator instantiation and ensure initialization completed.")
+
+        if not reference_image or not os.path.exists(reference_image):
+            print(f"Warning: Reference image not found at: {reference_image}. Flux model might not generate consistent character without it. Proceeding without reference image consistency (if model supports).")
+            # If a reference image is strictly required and not provided, consider raising an error
+            # For InstantCharacterFluxPipeline, subject_image is optional for general generation but crucial for character consistency.
             ref_image = None
-            if reference_image and os.path.exists(reference_image):
-                try:
-                    ref_image = Image.open(reference_image).convert('RGB')
-                    logger.info(f"成功加载参考图片: {reference_image}")
-                except Exception as e:
-                    logger.warning(f"加载参考图片失败: {e}")
-                    ref_image = None
-            else:
-                logger.warning(f"参考图片不存在或未提供: {reference_image}")
-            
-            # 生成参数
-            num_inference_steps = kwargs.get("steps", 28)
-            guidance_scale = kwargs.get("guidance_scale", 3.5)
-            subject_scale = kwargs.get("subject_scale", 0.9)
-            seed = kwargs.get("seed", random.randint(1000, 999999))
-            
-            # 设置随机种子
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            generator = torch.Generator(device=device).manual_seed(seed)
-            
-            logger.info(f"开始生成图片: steps={num_inference_steps}, guidance_scale={guidance_scale}, seed={seed}")
-            
-            # 生成图片
-            if ref_image:
-                image = self.pipe(
-                    prompt=prompt,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=guidance_scale,
-                    subject_scale=subject_scale,
-                    subject_image=ref_image,
-                    generator=generator,
-                ).images[0]
-            else:
-                image = self.pipe(
-                    prompt=prompt,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=guidance_scale,
-                    generator=generator,
-                ).images[0]
-            
-            # 保存图片
-            image.save(output_path)
-            logger.info(f"图片生成成功: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Flux图片生成失败: {e}")
-            raise
-
-    def generate_batch(self, prompts: List[str], reference_image: str = None,
-                      output_dir: Path = None, **kwargs) -> List[Path]:
-        """
-        批量生成图片
-        
-        Args:
-            prompts: 提示词列表
-            reference_image: 参考图片路径
-            output_dir: 输出目录
-            **kwargs: 其他参数
-            
-        Returns:
-            生成的图片路径列表
-        """
-        if output_dir is None:
-            output_dir = Path("generated_images")
-        
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        generated_paths = []
-        
-        for i, prompt in enumerate(prompts):
+        else:
             try:
-                # 生成唯一的种子
-                base_seed = kwargs.get("seed", 123456)
-                current_seed = base_seed + i
-                
-                # 设置输出文件名
-                filename = f"scene{i+1:02d}.png"
-                output_path = output_dir / filename
-                
-                # 更新参数
-                current_kwargs = kwargs.copy()
-                current_kwargs["seed"] = current_seed
-                
-                logger.info(f"生成第 {i+1}/{len(prompts)} 张图片: {filename}")
-                
-                # 生成图片
-                generated_path = self.generate(
-                    prompt=prompt,
-                    reference_image=reference_image,
-                    output_path=output_path,
-                    **current_kwargs
-                )
-                
-                if generated_path and generated_path.exists():
-                    generated_paths.append(generated_path)
-                    logger.info(f"✅ 第 {i+1} 张图片生成成功")
-                else:
-                    logger.error(f"❌ 第 {i+1} 张图片生成失败")
-                    
+                ref_image = Image.open(reference_image).convert('RGB')
             except Exception as e:
-                logger.error(f"生成第 {i+1} 张图片时出错: {e}")
-                continue
-        
-        logger.info(f"批量生成完成: {len(generated_paths)}/{len(prompts)} 张图片成功")
-        return generated_paths
+                print(f"Error loading reference image {reference_image}: {e}. Proceeding without reference image consistency.")
+                ref_image = None
 
-    def cleanup(self):
-        """清理资源"""
-        if self.pipe is not None:
-            logger.info("清理模型资源")
-            del self.pipe
-            self.pipe = None
-            self.is_initialized = False
-            
-            # 清理GPU缓存
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                logger.info("清理GPU缓存")
 
-    def __del__(self):
-        """析构函数"""
-        self.cleanup()
+        # Generation parameters from kwargs, with defaults
+        num_inference_steps = kwargs.get("steps", 30)
+        guidance_scale = kwargs.get("guidance_scale", 3.8)
+        subject_scale = kwargs.get("subject_scale", 0.9)
+        seed = kwargs.get("seed", 42) # Default seed if not provided
 
-# 测试代码
+        # Ensure generator is on CUDA if pipe is
+        generator_device = "cuda" if torch.cuda.is_available() else "cpu"
+        current_generator = torch.Generator(device=generator_device).manual_seed(seed)
+
+
+        # Call pipe with subject_image if available, otherwise without
+        if ref_image:
+            image = self.pipe(
+                prompt=prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                subject_scale=subject_scale,
+                subject_image=ref_image,
+                generator=current_generator,
+            ).images[0]
+        else:
+            image = self.pipe(
+                prompt=prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=current_generator,
+            ).images[0]
+
+
+        image.save(output_path)
+        return output_path
+
+
+# --- Main execution block to generate images from a specified prompt file ---
 if __name__ == "__main__":
-    # 测试占位符模式
-    generator = ImageGenerator(model_type="placeholder")
-    
-    test_prompt = "A beautiful anime girl in a spring garden"
-    output_path = Path("test_output.png")
-    
-    try:
-        result = generator.generate(test_prompt, output_path=output_path)
-        print(f"测试生成成功: {result}")
-    except Exception as e:
-        print(f"测试失败: {e}")
-    
-    # 批量测试
-    test_prompts = [
-        "Anime style, a girl walking in the park",
-        "Anime style, a boy reading under a tree",
-        "Anime style, children playing in the playground"
-    ]
-    
-    try:
-        results = generator.generate_batch(test_prompts, output_dir=Path("test_batch"))
-        print(f"批量测试完成: {len(results)} 张图片")
-    except Exception as e:
-        print(f"批量测试失败: {e}")
+    # --- Configuration ---
+    # Path to the directory containing img2img_prompts.txt (e.g., from LLMClient output)
+    # REPLACE THIS WITH THE ACTUAL PATH TO YOUR GENERATED CONTENT FOLDER
+    input_content_dir = Path("generated_video_content/机器人的故事_20250613_231316") # Example path
+    # If the above path doesn't exist, you'll need to run llm_client.py first
+    # Or, manually create a directory and put an img2img_prompts.txt file inside it.
 
+    # Path to your reference image (e.g., the anime boy character)
+    reference_image_path = 'img/12.png'
+
+    # Output subfolder name within input_content_dir for generated images
+    output_images_subfolder = "generated_images"
+
+    # Fixed seed for consistency (can be varied for each image if needed)
+    base_seed = 123456
+
+    # Generation parameters for Flux
+    generation_params = {
+        "steps": 30,
+        "guidance_scale": 3.8,
+        "subject_scale": 0.9,
+    }
+    # --- End Configuration ---
+
+
+    # --- Load Prompts ---
+    prompts_file_path = input_content_dir / "img2img_prompts.txt"
+    if not prompts_file_path.exists():
+        print(f"Error: img2img_prompts.txt not found at {prompts_file_path}.")
+        print("Please ensure you have run llm_client.py to generate content or specify the correct input_content_dir.")
+        exit()
+
+    img2img_prompts = []
+    with open(prompts_file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            # Remove any leading/trailing whitespace including newlines
+            clean_line = line.strip()
+            if clean_line: # Only add non-empty lines
+                img2img_prompts.append(clean_line)
+
+    if not img2img_prompts:
+        print(f"Warning: No prompts found in {prompts_file_path}. Exiting.")
+        exit()
+
+    print(f"Loaded {len(img2img_prompts)} prompts from {prompts_file_path}.")
+
+    # --- Setup Output Directory for Images ---
+    # Create the dedicated subfolder for images within the input_content_dir
+    output_image_dir = input_content_dir / output_images_subfolder
+    output_image_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Generated images will be saved to: {output_image_dir}")
+
+    # --- Initialize Image Generator ---
+    generator = ImageGenerator(model_type="flux")
+
+    print("\n--- Starting Image Generation ---")
+    generated_image_paths = []
+    for i, prompt in enumerate(img2img_prompts):
+        scene_num = i + 1 # Scenes are 1-indexed
+        
+        # You might want to extract the "scene name" from a corresponding file
+        # or use a default if it's not crucial for filename here.
+        # For simplicity, we'll use "sceneXX" in the filename.
+        filename = f"scene{scene_num:02d}.png"
+        filepath = output_image_dir / filename
+
+        # Generate a unique seed for each image
+        current_seed = base_seed + i
+
+        print(f"\nGenerating image for Scene {scene_num}: {prompt[:70]}...") # Show first 70 chars of prompt
+
+        # Generate the image using the ImageGenerator
+        generated_path = generator.generate(
+            prompt=prompt,
+            reference_image=reference_image_path,
+            output_path=filepath,
+            seed=current_seed,
+            **generation_params
+        )
+        if generated_path:
+            generated_image_paths.append(generated_path)
+            print(f"✅ Saved: {generated_path}")
+        else:
+            print(f"❌ Failed to generate image for Scene {scene_num}.")
+
+    print(f"\n--- Image Generation Complete ---")
+    print(f"Total images generated: {len(generated_image_paths)}")
+    print(f"All generated images are in: {output_image_dir}")
+
+    # You now have all generated image paths in `generated_image_paths`
+    # This list can be passed to your VideoGenerator for the next step.
