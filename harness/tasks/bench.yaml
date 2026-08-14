@@ -28,7 +28,7 @@ pipeline:
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
       gpu: "4,6"
-      variant: fl2va
+      variant: t2va
       steps: 30
       seed: 20260814
   context:

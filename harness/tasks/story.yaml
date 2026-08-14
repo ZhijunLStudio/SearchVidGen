@@ -45,11 +45,14 @@ pipeline:
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
       gpu: "4,6"
-      variant: fl2va
+      variant: t2va
       guidance_scale: 4.5
       steps: 30          # 实验档：30 步（默认约49步，质量更高但更慢）
       seed: 20260814
   context:
+    # 衔接策略（E8 实证）：none=文本延续（切镜自由+叙事推进10.0）；hard=首尾帧硬衔接（冻结帧）；
+    # ref=参考图软衔接（int8 单卡，见 bench_chain_ref.yaml）
+    chain_mode: none
     # 全片角色/风格锚点（可选，Ref2VA 模式下 ≤9 张）
     anchor_refs: []
 
