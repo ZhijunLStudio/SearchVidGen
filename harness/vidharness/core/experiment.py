@@ -62,9 +62,21 @@ class Experiment:
         return target
 
     def save_eval(self, stage: str, results: List[Dict[str, Any]]):
-        (self.eval_dir / f"{stage}.json").write_text(
-            json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        """按 (stage, artifact, attempt) 合并写入，避免多段评测互相覆盖。"""
+        path = self.eval_dir / f"{stage}.json"
+        merged: List[Dict[str, Any]] = []
+        if path.exists():
+            try:
+                merged = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                merged = []
+        key = lambda r: (r.get("artifact"), r.get("attempt"))
+        existing = {key(r) for r in merged if isinstance(r, dict)}
+        for r in results:
+            if key(r) not in existing:
+                merged.append(r)
+                existing.add(key(r))
+        path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         self._flush()
 
     def find_existing(self, stage: str, name: Optional[str] = None) -> Optional[Artifact]:
