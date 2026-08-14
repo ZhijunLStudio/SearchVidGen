@@ -30,6 +30,13 @@ class Experiment:
         self.final_dir = self.root / "final"
         for d in (self.artifacts_dir, self.eval_dir, self.final_dir):
             d.mkdir(parents=True, exist_ok=True)
+        existing = self.root / "manifest.json"
+        if existing.exists():
+            try:
+                self.manifest = json.loads(existing.read_text(encoding="utf-8"))
+                return
+            except Exception:
+                pass
         self.manifest: Dict[str, Any] = {
             "task": task,
             "run_id": self.run_id,
@@ -70,7 +77,8 @@ class Experiment:
                 merged = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 merged = []
-        key = lambda r: (r.get("artifact"), r.get("attempt"))
+        def key(r):
+            return json.dumps(r, ensure_ascii=False, sort_keys=True)
         existing = {key(r) for r in merged if isinstance(r, dict)}
         for r in results:
             if key(r) not in existing:

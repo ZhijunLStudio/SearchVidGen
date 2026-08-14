@@ -71,5 +71,7 @@ def assemble_final(videos: List[Path], audios: List[Path], narrations: List[str]
                 capture_output=True, check=True)
             merged = sub_
 
-        merged.replace(final)
+        # 跨文件系统安全移动（/tmp 与实验目录可能不在同一设备）
+        import shutil
+        shutil.move(str(merged), str(final))
     return final
