@@ -93,3 +93,49 @@ class TestJudgeAliases:
         v = parse_judge_output(out, crit)
         assert v["scores"]["与指令一致性"] == 8
         assert v["scores"]["画面质量"] == 7
+
+
+class TestFallback:
+    def test_fallback_switches_on_failure(self):
+        from vidharness.consumers.fallback import FallbackGenerator
+        from vidharness.seams import GenRequest, Artifact, ArtifactMeta
+        from pathlib import Path
+
+        class Boom:
+            name = "boom"
+            capabilities = {"audio": False}
+            def generate(self, req, workdir, **kw):
+                raise RuntimeError("boom 不可用")
+
+        class Ok:
+            name = "ok"
+            capabilities = {"audio": True}
+            def generate(self, req, workdir, **kw):
+                return Artifact(kind="video", path=Path(workdir) / "v.mp4",
+                                meta=ArtifactMeta(adapter="ok"))
+
+        fb = FallbackGenerator.__new__(FallbackGenerator)   # 绕过注册表直接注入
+        fb.chain = [Boom(), Ok()]
+        fb.name = "fallback[boom,ok]"
+        fb.capabilities = {"audio": True}
+        art = fb.generate(GenRequest(text="t"), workdir=Path("."))
+        assert art.meta.params["fallback_used"] == "ok"
+
+    def test_fallback_all_fail_raises(self):
+        from vidharness.consumers.fallback import FallbackGenerator
+        from vidharness.seams import GenRequest
+        from pathlib import Path
+
+        class Boom:
+            name = "boom"
+            capabilities = {}
+            def generate(self, req, workdir, **kw):
+                raise RuntimeError("不可用")
+
+        fb = FallbackGenerator.__new__(FallbackGenerator)
+        fb.chain = [Boom()]
+        fb.name = "fallback[boom]"
+        fb.capabilities = {}
+        import pytest
+        with pytest.raises(RuntimeError):
+            fb.generate(GenRequest(text="t"), workdir=Path("."))
