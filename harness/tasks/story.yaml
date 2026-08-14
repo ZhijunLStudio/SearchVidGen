@@ -61,7 +61,7 @@ judge:
 
 # ---- 逐段评测维度 ----
 segment_judge:
-  - {name: 与指令一致性, question: "视频是否准确呈现生成指令描述的主体、动作、镜头与环境？", weight: 1.0, min_score: 6}
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令描述的主体、动作、镜头与环境？", weight: 1.0, min_score: 6, aliases: [一致性]}
   - {name: 画面质量, question: "是否存在明显缺陷（肢体畸形、闪变、主体崩坏、水印杂质）？无缺陷给高分", weight: 1.0, min_score: 6}
   - {name: 音效场景相符, question: "画面内容是否与指令描述的音效场景相符（如'键盘敲击声'应有打字动作、'风声'应有环境飘动）？", weight: 0.8, min_score: 5}
 

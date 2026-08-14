@@ -35,12 +35,20 @@ def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, An
                     return _finalize(scores, feedback, criteria)
         except Exception:
             pass
-    # 2) 正则兜底："维度名[:：]\s*(\d+(\.\d+)?)"
+    # 2) 正则兜底："维度名[:：]\s*(\d+(\.\d+)?)"；支持别名（如"一致性"匹配"与指令一致性"）
     scores, feedback = {}, text
+    terms = []
     for c in criteria:
-        m = re.search(rf"{re.escape(c.name)}\s*[:：]?\s*(\d+(?:\.\d+)?)", text)
-        if m:
-            scores[c.name] = float(m.group(1))
+        aliases = getattr(c, "aliases", None) or [c.name]
+        if c.name not in aliases:
+            aliases = [c.name] + list(aliases)
+        terms.append((c, aliases))
+    for c, aliases in terms:
+        for term in aliases:
+            m = re.search(rf"{re.escape(term)}\s*[:：]?\s*(\d+(?:\.\d+)?)", text)
+            if m:
+                scores[c.name] = float(m.group(1))
+                break
     if not scores:
         # 任何 "N/10" 或 "N分" 视作第一维度的分数
         m = re.search(r"(\d+(?:\.\d+)?)\s*(?:/10|分)", text)

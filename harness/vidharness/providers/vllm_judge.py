@@ -65,11 +65,12 @@ class OpenAICompatJudge:
     capabilities = {"frame_sampling": True}
 
     def __init__(self, base_url: str, model: str, api_key: str = "EMPTY",
-                 temperature: float = 0.0, max_tokens: int = 2048,
-                 frame_samples: int = 4):
+                 temperature: float = 0.0, max_tokens: int = 4096,
+                 frame_samples: int = 4, disable_thinking: bool = True):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.temperature = temperature
+        self.disable_thinking = disable_thinking
         self.max_tokens = max_tokens
         self.frame_samples = frame_samples
 
@@ -93,9 +94,9 @@ class OpenAICompatJudge:
             prompt_lines.append(f"{i}. {name}: {q}")
         prompt_lines += [
             "",
-            "请仅输出一个 JSON 对象，格式：",
+            "请先输出一个 JSON 对象（这是唯一需要的内容），格式：",
             '{"<维度名>": <分数0-10>, "feedback": "<若不达标，用一句中文说明最需要修正的问题；达标则写 pass>"}',
-            "不要输出任何其他文字。",
+            "禁止输出思考过程、分析或任何其他文字，只输出 JSON。",
         ]
         text = "\n".join(prompt_lines)
 
@@ -107,12 +108,16 @@ class OpenAICompatJudge:
             })
         content.append({"type": "text", "text": text})
 
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": content}],
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if self.disable_thinking:
+            # Qwen3 系思考开关（vLLM chat_template_kwargs 透传）
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        resp = self.client.chat.completions.create(**kwargs)
         out = resp.choices[0].message.content or ""
 
         from ..consumers.judge_loop import parse_judge_output

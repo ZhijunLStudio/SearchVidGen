@@ -22,12 +22,13 @@ class Judge(Protocol):
 
 @dataclass
 class JudgeCriteria:
-    """一条评测维度。"""
+    """一条评测维度。aliases：正则兜底解析时的可匹配别名（如 ["一致性"]）。"""
     name: str
     question: str
     weight: float = 1.0
     min_score: float = 6.0
     scale: float = 10.0
+    aliases: list = None
 
 
 @dataclass

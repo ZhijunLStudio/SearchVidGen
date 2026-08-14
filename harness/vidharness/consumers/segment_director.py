@@ -159,7 +159,8 @@ class SegmentDirector:
         for c in (self.cfg.get(key) or []):
             out.append(JudgeCriteria(name=c["name"], question=c["question"],
                                      weight=float(c.get("weight", 1.0)),
-                                     min_score=float(c.get("min_score", 6.0))))
+                                     min_score=float(c.get("min_score", 6.0)),
+                                     aliases=c.get("aliases")))
         return out
 
     def _retry(self, key: str) -> RetryPolicy:
