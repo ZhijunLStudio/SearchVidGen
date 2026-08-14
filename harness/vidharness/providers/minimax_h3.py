@@ -57,12 +57,20 @@ class MiniMaxH3Local:
             os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6"
             import torch
             from diffusers import ComponentsManager, MiniMaxH3Blocks
-            # 官方双卡方案：text_encoder(~62GB) 一张卡，transformer+VAE(~62GB) 另一张卡，
-            # 各自 auto_cpu_offload。单卡 80GB 在首尾帧模式下峰值显存溢出。
-            workflow = MiniMaxH3Blocks()
+            from diffusers.modular_pipelines.modular_pipeline import SequentialPipelineBlocks
+            # 双卡方案：条件侧(~62GB) 一张卡，生成侧(~62GB) 另一张卡，各自 auto_cpu_offload。
+            # ref2va 条件侧 = before_encode(参考归一化) + text_encoder(含参考编码器)，
+            # normalized_references 经 PipelineState 流向生成侧 before_denoise。
+            workflow = MiniMaxH3Blocks().get_workflow(self.variant)
+            cond_blocks = {}
+            for key in ("before_encode", "text_encoder"):
+                if key in workflow.sub_blocks:
+                    cond_blocks[key] = workflow.sub_blocks.pop(key)
+            cond_combined = SequentialPipelineBlocks.from_blocks_dict(cond_blocks)
+
             text_manager = ComponentsManager()
             text_manager.enable_auto_cpu_offload(device="cuda:0")
-            conditioner = workflow.sub_blocks.pop("text_encoder").init_pipeline(
+            conditioner = cond_combined.init_pipeline(
                 self.model_path, components_manager=text_manager)
             conditioner.load_components(dtype=torch.bfloat16,
                                         pretrained_model_name_or_path=self.model_path)
@@ -70,7 +78,7 @@ class MiniMaxH3Local:
             manager = ComponentsManager()
             manager.enable_auto_cpu_offload(device="cuda:1")
             rest = workflow.init_pipeline(self.model_path, components_manager=manager)
-            rest.load_components(workflow=self.variant, dtype=torch.bfloat16,
+            rest.load_components(dtype=torch.bfloat16,
                                  pretrained_model_name_or_path=self.model_path)
             self.version = "diffusers-main"
             self._pipe = (conditioner, rest)
@@ -78,13 +86,15 @@ class MiniMaxH3Local:
 
     def generate(self, req: GenRequest, workdir: Path, **kw) -> Artifact:
         workdir.mkdir(parents=True, exist_ok=True)
-        conditioner, rest = self._get_pipe()
+        self._get_pipe()
         t0 = time.time()
 
         fps = 24
         n = max(5, min(req.duration or 8, 15))     # H3 约束：5-15 秒
         num_frames = self.num_frames or n * fps
         num_frames = max(120, min(num_frames, 360))  # 帧数钳制到 VAE 可编码范围
+        if self.variant == "ref2va":
+            num_frames = min(num_frames, 124)   # 参考 latent 进打包序列，17n+5 约束下取 5s
         kwargs: Dict[str, Any] = {
             "prompt": req.text,
             "num_frames": num_frames,
@@ -96,11 +106,26 @@ class MiniMaxH3Local:
             from PIL import Image
             kwargs["last_image"] = Image.open(req.last_frame).convert("RGB")
         if req.refs and self.variant == "ref2va":
-            from PIL import Image
-            kwargs["reference_images"] = [Image.open(r).convert("RGB") for r in req.refs]
+            from diffusers.modular_pipelines.minimax_h3.references import MiniMaxH3ImageReference
+            refs = []
+            for r in req.refs:
+                # 参考图默认按 2048 短边编码，视觉 token 数量爆炸导致单卡 OOM；
+                # 缩到 768 短边（token 数降 ~7 倍），保留主体特征
+                from PIL import Image
+                img = Image.open(r).convert("RGB")
+                if min(img.size) > 768:
+                    s = 768 / min(img.size)
+                    img = img.resize((round(img.width * s / 16) * 16,
+                                      round(img.height * s / 16) * 16))
+                refs.append(MiniMaxH3ImageReference(image=img))
+            kwargs["references"] = refs
         # 纯文本模式必须显式指定画布（无首帧可推断尺寸）
         if req.first_frame is None:
-            w, h = req.style.get("canvas", RATIO_CANVAS.get(req.ratio or "16:9", (1344, 768)))
+            if self.variant == "ref2va":
+                # 参考 latent 挤占打包序列，ref2va 用 480p 画布控制生成侧显存
+                w, h = req.style.get("canvas", (832, 480))
+            else:
+                w, h = req.style.get("canvas", RATIO_CANVAS.get(req.ratio or "16:9", (1344, 768)))
             kwargs["height"], kwargs["width"] = h, w
         if self.seed is not None:
             import torch
@@ -108,10 +133,21 @@ class MiniMaxH3Local:
         if self.steps is not None:
             kwargs["num_inference_steps"] = self.steps
 
-        # 两段式调用：先条件编码，再生成
-        state = conditioner(prompt=kwargs.pop("prompt"))
-        results = rest(state=state, output_type="pt",
-                       output=["videos", "audio", "sampling_rate"], **kwargs)
+        if self._pipe is not None and isinstance(self._pipe, tuple):
+            # 双卡两段式：先条件编码，再生成
+            conditioner, rest = self._pipe
+            cond_kwargs = {"prompt": kwargs.pop("prompt")}
+            for k in ("references", "height", "width"):   # ref2va 条件侧输入
+                if k in kwargs:
+                    cond_kwargs[k] = kwargs.pop(k)
+            if "num_frames" in kwargs:                    # before_encode 也需 num_frames（两侧共享）
+                cond_kwargs["num_frames"] = kwargs["num_frames"]
+            state = conditioner(**cond_kwargs)
+            results = rest(state=state, output_type="pt",
+                           output=["videos", "audio", "sampling_rate"], **kwargs)
+        else:
+            results = self._pipe(output_type="pt",
+                                 output=["videos", "audio", "sampling_rate"], **kwargs)
         video = results["videos"]
         audio = results["audio"]
         sr = results.get("sampling_rate", 32000)

@@ -30,13 +30,13 @@ pipeline:
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
       gpu: "4,6"
-      variant: ref2va
+      variant: fl2va
       steps: 30
       seed: 20260814
   context:
-    chain_mode: ref
+    chain_mode: none
     anchor_refs:
-      - /tmp/anchor_seg01_last.jpg   # 锚点参考图（与 hard 实验同一起点，保证可比）
+      anchor_refs: []
 
 judge:
   adapter: judge.openai-compat

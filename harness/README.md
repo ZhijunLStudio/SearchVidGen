@@ -107,3 +107,16 @@ chain_mode=ref（ref2va 参考图软衔接）对比实验。
 - 单段生成 ~18 分钟（去噪 17.5min + 编解码），4 段成片总 GPU 时长 ~81 分钟
 - 本地算力成本 ≈ $1.6/部（$1.2/卡时），对比 H3 官方 API 768P 约 ¥0.3/秒 ≈ 32s 成片 ¥9.6
 - 判决：本地模式适合批量/隐私场景；API 模式单价更低但需按量计费
+
+### E5：ref2va（参考模式）单/双卡部署均 OOM（2026-08-15）
+ref2va 将参考 latent 拼入打包序列，生成侧（transformer_ref 62GB 常驻 + 参考/视频/音频
+token 激活）超过单卡 80GB；480p 画布与 5s 帧数均不足以缓解（瓶颈是权重常驻而非帧数）。
+官方 int8 路径（TransformersTorchAoConfig Int8WeightOnlyConfig + block_level group offload，
+~75GB 主机内存）是正确解，留待下轮实现。
+暂用 chain_mode=none（纯文本延续）替代软参考衔接做对比实验。
+
+### E6：ref2va 双卡拆分要点
+- 条件侧必须合并 before_encode + text_encoder 两个子块（SequentialPipelineBlocks.from_blocks_dict），
+  因为参考编码器在 text_encoder 内、依赖 before_encode 的 normalized_references
+- before_encode 需要 num_frames（视频参考归一化）
+- 参考图参数名是 references（MiniMaxH3ImageReference.from_file），不是 reference_images
