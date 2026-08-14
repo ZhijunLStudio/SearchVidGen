@@ -98,8 +98,24 @@ class Experiment:
             json.dumps(self.manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    def finalize(self):
+    def finalize(self, gpu_price_usd_per_hour: float = 1.2):
+        """收尾：汇总统计（含本地 GPU 时间成本估算）。
+
+        gpu_price_usd_per_hour: 单卡 A800 级租用参考价（可按部署环境覆盖）。
+        """
         self.manifest["finished_at"] = datetime.now().isoformat()
+        # 本地 GPU 时间：backend=local 的生成产物耗时合计
+        gpu_s = 0.0
+        for stage, arts in self.manifest.get("stages", {}).items():
+            for a in arts:
+                meta = a.get("meta", {})
+                if meta.get("params", {}).get("backend", "") == "local" or \
+                   "local" in str(meta.get("adapter", "")):
+                    gpu_s += float(meta.get("elapsed_s", 0.0))
+        self.manifest["local_gpu_hours"] = round(gpu_s / 3600, 3)
+        self.manifest["local_gpu_cost_usd_est"] = round(gpu_s / 3600 * gpu_price_usd_per_hour, 3)
+        self.manifest["total_cost_usd_all"] = round(
+            self.manifest["total_cost_usd"] + self.manifest["local_gpu_cost_usd_est"], 4)
         self._flush()
         return self.root
 
