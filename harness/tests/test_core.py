@@ -82,3 +82,14 @@ class TestExperiment:
         m = json.loads((exp.root / "manifest.json").read_text())
         assert m["total_cost_usd"] == pytest.approx(0.1)
         assert len(m["stages"]["segments"]) == 1
+
+
+class TestJudgeAliases:
+    def test_alias_fallback(self):
+        """思考模型常省略维度前缀（'与指令一致性'→'一致性'），别名兜底应能解析。"""
+        out = "分析：一致性: 8，画面质量: 7"
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6, aliases=["一致性"]),
+                JudgeCriteria(name="画面质量", question="q", min_score=6)]
+        v = parse_judge_output(out, crit)
+        assert v["scores"]["与指令一致性"] == 8
+        assert v["scores"]["画面质量"] == 7
