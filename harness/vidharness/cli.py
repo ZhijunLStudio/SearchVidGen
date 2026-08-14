@@ -33,8 +33,14 @@ def cmd_report(args):
 def cmd_run(args):
     load_builtin_adapters()
     cfg = yaml.safe_load(Path(args.task).read_text(encoding="utf-8"))
-    exp = Experiment(task=cfg.get("task_name", "story"),
-                     base_dir=Path(args.output))
+    task = cfg.get("task_name", "story")
+    if args.resume:
+        exp = Experiment(task=task, base_dir=Path(args.output), run_id=args.resume)
+        if not exp.root.exists():
+            raise SystemExit(f"找不到实验 {args.resume}（在 {exp.root}）")
+        print(f"♻️ 断点续跑: {exp.root}")
+    else:
+        exp = Experiment(task=task, base_dir=Path(args.output))
     director = SegmentDirector(exp, cfg)
     final = director.run(args.query)
     print(json.dumps({"final": str(final), "experiment": str(exp.root)},
@@ -49,6 +55,7 @@ def main(argv=None):
     pr.add_argument("task", help="任务配置 YAML")
     pr.add_argument("--query", required=True, help="搜索词/故事主题")
     pr.add_argument("--output", default="experiments", help="实验输出根目录")
+    pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)
 
     pa = sub.add_parser("adapters", help="列出适配器")
