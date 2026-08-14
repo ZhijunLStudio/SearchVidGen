@@ -54,13 +54,63 @@ class MiniMaxH3Local:
     def _get_pipe(self):
         if self._pipe is None:
             import os
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6"
+            os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6" 或 "2"
             import torch
+
+            if self.variant == "ref2va":
+                # 官方 int8 配方（参考模式单卡方案）：
+                # transformer_ref/text_encoder 以 Int8WeightOnly 量化加载（显存减半），
+                # transformer 块级流式 offload（use_stream），VAE 常驻 GPU。
+                from diffusers import (MiniMaxH3ModularPipeline,
+                                       MiniMaxH3Transformer3DModel, TorchAoConfig)
+                from diffusers.hooks import apply_group_offloading
+                from transformers import Qwen3VLForConditionalGeneration
+                from transformers import TorchAoConfig as TransformersTorchAoConfig
+                from torchao.quantization import Int8WeightOnlyConfig
+
+                t_not_convert = [
+                    "proj_in", "audio_proj_in", "context_embedder", "time_embedder",
+                    "time_proj", "token_refiner", "norm_out", "proj_out", "audio_proj_out",
+                ]
+                te_not_convert = [
+                    "model.visual", "model.language_model.embed_tokens",
+                    "model.language_model.norm", "lm_head",
+                ]
+                pipe = MiniMaxH3ModularPipeline.from_pretrained(self.model_path)
+                pipe.update_components(
+                    transformer_ref=MiniMaxH3Transformer3DModel.from_pretrained(
+                        self.model_path, subfolder="transformer_ref",
+                        dtype=torch.bfloat16,
+                        quantization_config=TorchAoConfig(
+                            Int8WeightOnlyConfig(version=2),
+                            modules_to_not_convert=t_not_convert),
+                        low_cpu_mem_usage=True),
+                    text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
+                        self.model_path, subfolder="text_encoder",
+                        dtype=torch.bfloat16,
+                        quantization_config=TransformersTorchAoConfig(
+                            Int8WeightOnlyConfig(version=2),
+                            modules_to_not_convert=te_not_convert)),
+                )
+                pipe.load_components(workflow="ref2va", dtype=torch.bfloat16,
+                                     pretrained_model_name_or_path=self.model_path)
+                pipe.transformer_ref.requires_grad_(False)
+                pipe.text_encoder.requires_grad_(False)
+                offload = dict(onload_device=torch.device("cuda"),
+                               offload_device=torch.device("cpu"), use_stream=True)
+                pipe.transformer_ref.enable_group_offload(
+                    offload_type="block_level", num_blocks_per_group=1, **offload)
+                apply_group_offloading(pipe.text_encoder.model,
+                                       offload_type="leaf_level", **offload)
+                pipe.vae.to("cuda")
+                pipe.audio_vae.to("cuda")
+                pipe._device = torch.device("cuda")   # 显式执行设备兜底
+                self._pipe = pipe
+                return self._pipe
+
             from diffusers import ComponentsManager, MiniMaxH3Blocks
             from diffusers.modular_pipelines.modular_pipeline import SequentialPipelineBlocks
-            # 双卡方案：条件侧(~62GB) 一张卡，生成侧(~62GB) 另一张卡，各自 auto_cpu_offload。
-            # ref2va 条件侧 = before_encode(参考归一化) + text_encoder(含参考编码器)，
-            # normalized_references 经 PipelineState 流向生成侧 before_denoise。
+            # 双卡方案（fl2va/t2va）：条件侧(~62GB) 一张卡，生成侧(~62GB) 另一张卡。
             workflow = MiniMaxH3Blocks().get_workflow(self.variant)
             cond_blocks = {}
             for key in ("before_encode", "text_encoder"):
@@ -93,8 +143,6 @@ class MiniMaxH3Local:
         n = max(5, min(req.duration or 8, 15))     # H3 约束：5-15 秒
         num_frames = self.num_frames or n * fps
         num_frames = max(120, min(num_frames, 360))  # 帧数钳制到 VAE 可编码范围
-        if self.variant == "ref2va":
-            num_frames = min(num_frames, 124)   # 参考 latent 进打包序列，17n+5 约束下取 5s
         kwargs: Dict[str, Any] = {
             "prompt": req.text,
             "num_frames": num_frames,
@@ -121,11 +169,7 @@ class MiniMaxH3Local:
             kwargs["references"] = refs
         # 纯文本模式必须显式指定画布（无首帧可推断尺寸）
         if req.first_frame is None:
-            if self.variant == "ref2va":
-                # 参考 latent 挤占打包序列，ref2va 用 480p 画布控制生成侧显存
-                w, h = req.style.get("canvas", (832, 480))
-            else:
-                w, h = req.style.get("canvas", RATIO_CANVAS.get(req.ratio or "16:9", (1344, 768)))
+            w, h = req.style.get("canvas", RATIO_CANVAS.get(req.ratio or "16:9", (1344, 768)))
             kwargs["height"], kwargs["width"] = h, w
         if self.seed is not None:
             import torch

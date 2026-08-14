@@ -120,3 +120,19 @@ token 激活）超过单卡 80GB；480p 画布与 5s 帧数均不足以缓解（
   因为参考编码器在 text_encoder 内、依赖 before_encode 的 normalized_references
 - before_encode 需要 num_frames（视频参考归一化）
 - 参考图参数名是 references（MiniMaxH3ImageReference.from_file），不是 reference_images
+
+### E7：ref2va int8 配方落地（2026-08-15）
+官方 int8 配方在本机成功：独立环境 torch 2.13+torchao 0.18（0.15+ 才支持
+Int8WeightOnlyConfig(version=2) 且要求 torch>=2.9，与旧环境 vllm 0.11 冲突→独立环境）。
+要点：diffusers 新版要求 low_cpu_mem_usage=True（与官方文档相反）；torchao 量化加载后
+需 pipe._device 兜底执行设备；ffmpeg 需在 PATH。效果：ref2va 单卡显存从 ~78GB 降至
+**38GB**（量化权重+块级流式 offload），5s 测试 342s 完成（含 ~4.5min 加载）。
+
+### E8：衔接策略对比（hard vs none，同一故事"雨夜小猫"）
+| 模式 | 跨段一致性 | 叙事推进 | 结论 |
+|---|---|---|---|
+| hard（fl2va 首帧硬衔接） | 10.0 | **1.0（冻结帧）** | 画面连续但叙事冻结 |
+| none（t2va 文本延续） | 10.0 | **10.0** | 切镜自由 + 文本角色描述保一致 |
+| ref（ref2va 参考软衔接） | 运行中 | 运行中 | int8 后单卡可跑 |
+
+叙事推进维度由跨段评测（相邻段首尾帧对比 + 裁判判定"是否为合理新镜头"）量化。
