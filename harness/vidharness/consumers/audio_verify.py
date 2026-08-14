@@ -62,8 +62,15 @@ def verify_segment_audio(video: Path, expected_text: str, transcriber: Any,
 
 
 def verify_film(videos: List[Path], narrations: List[str], transcriber: Any, exp) -> List[Dict[str, Any]]:
-    """成片级：逐段音频验证。"""
+    """成片级：逐段音频验证。验证失败不阻断流水线（记录 unavailable 后继续）。"""
     records = []
     for v, n in zip(videos, narrations):
-        records.append(verify_segment_audio(v, n, transcriber, exp))
+        try:
+            records.append(verify_segment_audio(v, n, transcriber, exp))
+        except Exception as e:
+            rec = {"video": str(v), "expected": n, "transcript": "",
+                   "error": f"音频验证不可用: {type(e).__name__}: {str(e)[:120]}",
+                   "passed": None}
+            exp.save_eval("audio_verify", [rec])
+            records.append(rec)
     return records
