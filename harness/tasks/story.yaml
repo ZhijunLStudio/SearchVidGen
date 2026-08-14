@@ -60,6 +60,7 @@ judge:
     base_url: http://127.0.0.1:8030/v1
     model: judge-qwen3.5-27b
     frame_samples: 4
+    disable_thinking: true   # 思考关闭：防 token 燃烧；如需更严谨评分可设 false
 
 # ---- 逐段评测维度 ----
 segment_judge:

@@ -43,6 +43,7 @@ judge:
     base_url: http://127.0.0.1:8030/v1
     model: judge-qwen3.5-27b
     frame_samples: 4
+    disable_thinking: true   # 思考关闭：防 token 燃烧；如需更严谨评分可设 false
 
 segment_judge:
   - {name: 与指令一致性, question: "视频是否准确呈现生成指令描述的主体、动作、镜头与环境？", weight: 1.0, min_score: 6, aliases: [一致性]}
