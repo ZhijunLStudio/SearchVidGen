@@ -85,7 +85,13 @@ class Experiment:
         if meta_path.exists():
             meta = ArtifactMeta(**json.loads(meta_path.read_text(encoding="utf-8")))
         kind = path.suffix.lstrip(".")
-        return Artifact(kind=kind, path=path, meta=meta)
+        payload = {}
+        if kind == "json":
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+        return Artifact(kind=kind, path=path, meta=meta, payload=payload)
 
     def _flush(self):
         (self.root / "manifest.json").write_text(

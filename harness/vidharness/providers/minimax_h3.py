@@ -54,26 +54,31 @@ class MiniMaxH3Local:
     def _get_pipe(self):
         if self._pipe is None:
             import os
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
+            os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6"
             import torch
-            from diffusers import ComponentsManager, MiniMaxH3ModularPipeline
-            # 单卡 80GB：auto_cpu_offload 逐组件换入换出（text_encoder ~62GB + transformer ~62GB）
+            from diffusers import ComponentsManager, MiniMaxH3Blocks
+            # 官方双卡方案：text_encoder(~62GB) 一张卡，transformer+VAE(~62GB) 另一张卡，
+            # 各自 auto_cpu_offload。单卡 80GB 在首尾帧模式下峰值显存溢出。
+            workflow = MiniMaxH3Blocks()
+            text_manager = ComponentsManager()
+            text_manager.enable_auto_cpu_offload(device="cuda:0")
+            conditioner = workflow.sub_blocks.pop("text_encoder").init_pipeline(
+                self.model_path, components_manager=text_manager)
+            conditioner.load_components(dtype=torch.bfloat16,
+                                        pretrained_model_name_or_path=self.model_path)
+
             manager = ComponentsManager()
-            manager.enable_auto_cpu_offload(device="cuda")
-            pipe = MiniMaxH3ModularPipeline.from_pretrained(
-                self.model_path, components_manager=manager,
-            )
-            # workflow 只传给 load_components（from_pretrained 传 workflow 会二次 get_workflow 出错）
-            # pretrained_model_name_or_path 覆盖组件源为本地目录（默认指向 HF repo id）
-            pipe.load_components(workflow=self.variant, dtype=torch.bfloat16,
+            manager.enable_auto_cpu_offload(device="cuda:1")
+            rest = workflow.init_pipeline(self.model_path, components_manager=manager)
+            rest.load_components(workflow=self.variant, dtype=torch.bfloat16,
                                  pretrained_model_name_or_path=self.model_path)
             self.version = "diffusers-main"
-            self._pipe = pipe
+            self._pipe = (conditioner, rest)
         return self._pipe
 
     def generate(self, req: GenRequest, workdir: Path, **kw) -> Artifact:
         workdir.mkdir(parents=True, exist_ok=True)
-        pipe = self._get_pipe()
+        conditioner, rest = self._get_pipe()
         t0 = time.time()
 
         fps = 24
@@ -103,7 +108,10 @@ class MiniMaxH3Local:
         if self.steps is not None:
             kwargs["num_inference_steps"] = self.steps
 
-        results = pipe(**kwargs, output_type="pt", output=["videos", "audio", "sampling_rate"])
+        # 两段式调用：先条件编码，再生成
+        state = conditioner(prompt=kwargs.pop("prompt"))
+        results = rest(state=state, output_type="pt",
+                       output=["videos", "audio", "sampling_rate"], **kwargs)
         video = results["videos"]
         audio = results["audio"]
         sr = results.get("sampling_rate", 32000)

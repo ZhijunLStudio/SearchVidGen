@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from ..core.experiment import Experiment, Timer
 from .judge_loop import run_with_judge
 from ..seams import GenRequest, JudgeCriteria, MediaGenerator, RetryPolicy
-from ..core.registry import resolve
+from ..core.registry import check_capabilities, resolve
 
 
 class SegmentDirector:
@@ -27,13 +27,26 @@ class SegmentDirector:
         self.cfg = config
         self.script_adapter = resolve(config["pipeline"]["script"]["adapter"])(
             **config["pipeline"]["script"].get("params", {}))
-        self.generator: MediaGenerator = resolve(config["pipeline"]["generator"]["adapter"])(
+        gen_name = config["pipeline"]["generator"]["adapter"]
+        self.generator: MediaGenerator = resolve(gen_name)(
             **config["pipeline"]["generator"].get("params", {}))
+        # 能力校验（fail loud）：任务要求超出提供者能力直接报错
+        required = {"first_last_frame": True}
+        if config.get("audio_verify"):
+            required["audio"] = True
+        caps = check_capabilities(gen_name, required, context="generator")
+        # 记录进 manifest 便于对比
+        exp.manifest["generator_capabilities"] = caps
         self.judge = resolve(config["judge"]["adapter"])(**config["judge"].get("params", {}))
         self.task = config.get("task", {})
 
     # ---- 1. 剧本 ----
     def stage_script(self, query: str) -> Dict[str, Any]:
+        # 断点续跑：剧本也要缓存（否则重跑的新剧本与已生成片段不对齐）
+        existing = self.exp.find_existing("script", "script")
+        if existing and existing.payload:
+            print("   复用已有剧本（断点续跑）")
+            return existing.payload
         with Timer():
             art = self.script_adapter.generate(
                 query=query, template=self.task,

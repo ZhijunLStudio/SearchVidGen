@@ -27,7 +27,7 @@ pipeline:
     adapter: generator.minimax-h3-local
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
-      gpu: "6"
+      gpu: "4,6"
       variant: fl2va
       steps: 30
       seed: 20260814

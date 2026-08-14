@@ -37,8 +37,7 @@ def resolve(adapter: Union[str, Any]) -> Any:
 
 def capabilities(adapter: Union[str, Any]) -> Dict[str, Any]:
     obj = resolve(adapter)
-    if isinstance(obj, type):
-        obj = obj()
+    # 注册的是类；capabilities 是类属性，直接读，不实例化（实例化需要构造参数）
     return getattr(obj, "capabilities", {})
 
 
