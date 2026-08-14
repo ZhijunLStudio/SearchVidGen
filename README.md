@@ -1,5 +1,7 @@
 # SearchVidGen: 从一个想法到一部影片，只需一键
 
+[English](./README.en-US.md) | 简体中文
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
