@@ -29,6 +29,9 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
         manifest = _load_json(run_dir / "manifest.json")
         if not manifest:
             continue
+        # 只统计有成片的完整 run（中断的调试 run 不进入对比）
+        if not (run_dir / "final" / "final_video.mp4").exists():
+            continue
         evals = {}
         for f in (run_dir / "eval").glob("*.json"):
             evals[f.stem] = _load_json(f)
