@@ -62,6 +62,8 @@ class SegmentDirector:
         seg_videos: List[Path] = []
         last_frame: Optional[Path] = None
         anchor_refs = self._anchor_refs()
+        # 衔接策略：hard=首帧硬条件(fl2va) / ref=末帧作参考图(ref2va) / none=无衔接
+        chain_mode = self.cfg.get("pipeline", {}).get("context", {}).get("chain_mode", "hard")
 
         for i, plan in enumerate(plans):
             name = f"seg{i + 1:02d}"
@@ -74,10 +76,14 @@ class SegmentDirector:
             req = GenRequest(
                 text=plan.get("video_prompt", plan.get("text", "")),
                 refs=anchor_refs,
-                first_frame=last_frame,          # 跨段衔接：上一段末帧 → 本段首帧
                 duration=plan.get("duration", self._default_duration()),
                 ratio=plan.get("ratio", self.cfg.get("pipeline", {}).get("generator", {}).get("params", {}).get("ratio", "16:9")),
             )
+            if last_frame is not None:
+                if chain_mode == "hard":
+                    req.first_frame = last_frame     # 硬衔接：上一段末帧 → 本段首帧
+                elif chain_mode == "ref":
+                    req.refs = [last_frame] + anchor_refs   # 软衔接：末帧作为参考图
             art, history = run_with_judge(
                 self.generator, self.judge,
                 self._criteria("segment_judge"), self._retry("segment_retry"),
@@ -94,12 +100,16 @@ class SegmentDirector:
         if len(videos) < 2:
             return {"checked": False}
         records = []
+        cross_crit = self._criteria("cross_judge") or [JudgeCriteria(
+            name="跨段一致性",
+            question="这两帧分别是上一段结尾与下一段开头，请检查：人物外貌/服装是否一致、场景是否自然衔接。不一致请说明差异。")]
+        crit_dict = {c.name: c.question for c in cross_crit}
         for i in range(1, len(videos)):
             prev_last = self._extract_last_frame(videos[i - 1], self.exp)
             cur_first = self._extract_frame(videos[i], 0.0, self.exp)
             art = self.judge.judge(
                 media=[prev_last, cur_first],
-                criteria={"跨段一致性": "这两帧分别是上一段结尾与下一段开头，请检查：人物外貌/服装是否一致、场景是否自然衔接。不一致请说明差异。"},
+                criteria=crit_dict,
                 workdir=self.exp.eval_dir,
             )
             rec = {"segment_pair": [i, i + 1], **art.payload}
