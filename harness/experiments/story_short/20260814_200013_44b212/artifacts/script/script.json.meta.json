@@ -1,0 +1,1 @@
+{"adapter": "script.deepseek-v4-flash", "model": "deepseek-v4-flash", "version": "", "params": {"temperature": 0.8, "max_tokens": 8192}, "seed": null, "elapsed_s": 6.469474792480469, "cost_usd": 0.00016023, "timestamp": 1786708820.0555654}

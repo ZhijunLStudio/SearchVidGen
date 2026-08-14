@@ -1,0 +1,84 @@
+"""核心逻辑单元测试：注册表、评测解析、实验缓存。
+
+运行：python -m pytest tests/ -v  （在 harness/ 目录下）
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from vidharness.core.registry import register, get, check_capabilities  # noqa: E402
+from vidharness.consumers.judge_loop import parse_judge_output  # noqa: E402
+from vidharness.seams import JudgeCriteria, RetryPolicy, Artifact, ArtifactMeta  # noqa: E402
+from vidharness.core.experiment import Experiment  # noqa: E402
+
+
+class TestRegistry:
+    def test_register_and_get(self):
+        @register("test.dummy")
+        class Dummy:
+            capabilities = {"audio": True}
+
+        assert get("test.dummy") is Dummy
+
+    def test_unknown_adapter_fails_loud(self):
+        with pytest.raises(KeyError):
+            get("does.not.exist")
+
+    def test_capability_check_fails_loud(self):
+        @register("test.audio-only")
+        class AudioOnly:
+            capabilities = {"audio": True, "max_duration_s": 10}
+
+        with pytest.raises(RuntimeError):
+            check_capabilities("test.audio-only", {"video": True})
+        with pytest.raises(RuntimeError):
+            check_capabilities("test.audio-only", {"max_duration_s": 11})
+        # 满足能力则通过
+        caps = check_capabilities("test.audio-only", {"audio": True, "max_duration_s": 8})
+        assert caps["audio"] is True
+
+
+class TestJudgeParsing:
+    def test_json_block(self):
+        out = '```json\n{"与指令一致性": 8, "画面质量": 7, "feedback": "ok"}\n```'
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6),
+                JudgeCriteria(name="画面质量", question="q", min_score=6)]
+        v = parse_judge_output(out, crit)
+        assert v["passed"] is True
+        assert v["scores"]["与指令一致性"] == 8
+
+    def test_below_threshold_fails(self):
+        out = '{"与指令一致性": 4, "画面质量": 8, "feedback": "主体崩坏"}'
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6),
+                JudgeCriteria(name="画面质量", question="q", min_score=6)]
+        v = parse_judge_output(out, crit)
+        assert v["passed"] is False
+        assert "主体崩坏" in v["feedback"]
+
+    def test_fallback_score_pattern(self):
+        out = "总体评分：7/10，画面尚可"
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6)]
+        v = parse_judge_output(out, crit)
+        assert v["scores"]["与指令一致性"] == 7
+
+
+class TestExperiment:
+    def test_artifact_caching_and_resume(self, tmp_path):
+        exp = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        art = Artifact(kind="video", path=Path(tmp_path) / "v.mp4",
+                       meta=ArtifactMeta(adapter="x", elapsed_s=1.0, cost_usd=0.1))
+        Path(tmp_path, "v.mp4").write_bytes(b"fake")
+        exp.save_artifact("segments", art, name="seg01")
+        # 断点续跑：能找到
+        found = exp.find_existing("segments", "seg01")
+        assert found is not None and found.path.name.startswith("seg01")
+        # manifest 记录了成本
+        m = json.loads((exp.root / "manifest.json").read_text())
+        assert m["total_cost_usd"] == pytest.approx(0.1)
+        assert len(m["stages"]["segments"]) == 1

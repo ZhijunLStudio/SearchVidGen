@@ -1,0 +1,49 @@
+# 模型基准对比任务模板（bench）
+# 同一 query 跑多个 generator 提供者，产出一份可对比的实验报告。
+# 用法：python -m vidharness.cli run tasks/bench.yaml --query "..."
+# 之后：python -m vidharness.cli report story_short
+
+task_name: story_short
+
+task:
+  system: "你是一位AI短片导演。你只输出分镜计划，不负责生成画面。"
+  user_template: |
+    请根据主题"{query}"，写一个约30-45秒的完整短片分镜计划，共{segment_count}段（每段8-15秒）。
+    要求：
+    1. 全片只有一个主角，每段的 video_prompt 都必须用相同措辞描述主角外貌与服装
+    2. 每段 video_prompt 用中文写（50-90字）：镜头运动、主体动作、环境动态、情绪氛围
+    3. video_prompt 末尾补充音效要求："音频：<环境音/音效/对白描述>"
+    4. narration：每段中文字幕文本（≤15字）
+    严格按 JSON 输出：{{"segments":[{{"video_prompt":"...","narration":"...","duration":8}}]}}
+  defaults:
+    segment_count: 4
+
+pipeline:
+  script:
+    adapter: script.deepseek-v4-flash
+    params: {model: deepseek-chat, temperature: 0.8}
+  generator:
+    # 对比实验：改这一行切换提供者，其余不变，report 命令自动对比
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "6"
+      variant: fl2va
+      steps: 30
+      seed: 20260814
+  context:
+    anchor_refs: []
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 4
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令描述的主体、动作、镜头与环境？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（肢体畸形、闪变、主体崩坏、水印杂质）？无缺陷给高分", weight: 1.0, min_score: 6}
+  - {name: 音效场景相符, question: "画面内容是否与指令描述的音效场景相符？", weight: 0.8, min_score: 5}
+
+segment_retry: {max_attempts: 2, inject_feedback: true}
