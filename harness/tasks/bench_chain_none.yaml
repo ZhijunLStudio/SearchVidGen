@@ -3,7 +3,7 @@
 #   python -m vidharness.cli run tasks/bench_chain_hard.yaml --query "..."
 #   python -m vidharness.cli run tasks/bench_chain_ref.yaml  --query "..."
 # 之后：python -m vidharness.cli report story_short
-# 注意：ref 模式要求 generator 提供者 variant=ref2va
+# 无衔接模式：段落间不传帧条件，仅靠剧本文本重复角色描述保持一致性
 
 task_name: story_short
 
@@ -30,13 +30,12 @@ pipeline:
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
       gpu: "4,6"
-      variant: fl2va
+      variant: t2va
       steps: 30
       seed: 20260814
   context:
     chain_mode: none
-    anchor_refs:
-      anchor_refs: []
+    anchor_refs: []
 
 judge:
   adapter: judge.openai-compat
