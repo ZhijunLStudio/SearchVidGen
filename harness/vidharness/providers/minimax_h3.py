@@ -103,7 +103,7 @@ class MiniMaxH3Local:
         if self.steps is not None:
             kwargs["num_inference_steps"] = self.steps
 
-        results = pipe(**kwargs, output=["videos", "audio", "sampling_rate"])
+        results = pipe(**kwargs, output_type="pt", output=["videos", "audio", "sampling_rate"])
         video = results["videos"]
         audio = results["audio"]
         sr = results.get("sampling_rate", 32000)
@@ -138,14 +138,17 @@ class MiniMaxH3Local:
             frames = [_norm(f) for f in video]
         elif isinstance(video, Image.Image):
             frames = [_norm(video)]
-        elif hasattr(video, "detach"):       # torch.Tensor
+        elif hasattr(video, "detach"):       # torch.Tensor，H3 输出 (B, T, C, H, W)
             import torch
             if video.dim() == 5:
-                video = video[0]
-            if video.dim() == 4:             # (T, C, H, W)
-                frames = [_norm(f.permute(1, 2, 0).float().cpu().numpy()) for f in video]
-            else:                            # (C, H, W) 单帧
+                video = video[0]             # -> (T, C, H, W)
+            if video.dim() == 4:             # (T, C, H, W) -> (T, H, W, C)
+                video = video.permute(0, 2, 3, 1)
+                frames = [_norm(f.float().cpu().numpy()) for f in video]
+            elif video.dim() == 3:           # (C, H, W) 单帧
                 frames = [_norm(video.permute(1, 2, 0).float().cpu().numpy())]
+            else:
+                raise ValueError(f"未知视频张量维度: {tuple(video.shape)}")
         else:                                # numpy
             arr = np.asarray(video)
             if arr.ndim == 4:                # (T, H, W, C)
