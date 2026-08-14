@@ -2,6 +2,7 @@
 from .generator import Artifact, ArtifactMeta, GenRequest, MediaGenerator
 from .script import ScriptGenerator
 from .judge import Judge, JudgeCriteria, RetryPolicy
+from .transcribe import Transcriber
 
 __all__ = ["Artifact", "ArtifactMeta", "GenRequest", "MediaGenerator",
-           "ScriptGenerator", "Judge", "JudgeCriteria", "RetryPolicy"]
+           "ScriptGenerator", "Judge", "JudgeCriteria", "RetryPolicy", "Transcriber"]

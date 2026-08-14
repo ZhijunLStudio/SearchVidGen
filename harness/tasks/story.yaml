@@ -71,3 +71,7 @@ cross_judge:
 
 # ---- 重试策略 ----
 segment_retry: {max_attempts: 2, inject_feedback: true}
+
+# ---- 音频验证（转写原生音频与旁白比对）----
+audio_verify:
+  adapter: transcribe.sensevoice-small

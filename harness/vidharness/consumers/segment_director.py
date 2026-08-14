@@ -104,19 +104,27 @@ class SegmentDirector:
         return final
 
     def run(self, query: str) -> Path:
-        print(f"▶ [1/4] 剧本规划 ({self.script_adapter.name})")
+        print(f"▶ [1/5] 剧本规划 ({self.script_adapter.name})")
         script = self.stage_script(query)
         n = len(script.get("segments", []))
         print(f"   分镜段数: {n}")
 
-        print(f"▶ [2/4] 逐段生成+评测 ({self.generator.name})")
+        print(f"▶ [2/5] 逐段生成+评测 ({self.generator.name})")
         videos = self.stage_segments(script)
 
-        print(f"▶ [3/4] 跨段一致性评测 ({self.judge.name})")
+        print(f"▶ [3/5] 跨段一致性评测 ({self.judge.name})")
         self.stage_cross_consistency(videos, script)
 
-        print("▶ [4/4] 成片总装")
+        print("▶ [4/5] 成片总装")
         final = self.stage_assemble(videos, script)
+
+        # 音频验证（可选）：转写原生音频，与旁白比对
+        audio_cfg = self.cfg.get("audio_verify")
+        if audio_cfg:
+            print(f"▶ [5/5] 音频验证 ({audio_cfg['adapter']})")
+            from .audio_verify import verify_film
+            narrations = [p.get("narration", "") for p in script.get("segments", [])]
+            verify_film(videos, narrations, audio_cfg["adapter"], self.exp)
 
         self.exp.finalize()
         print(f"\n✅ 完成: {final}")
