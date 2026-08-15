@@ -139,3 +139,47 @@ class TestFallback:
         import pytest
         with pytest.raises(RuntimeError):
             fb.generate(GenRequest(text="t"), workdir=Path("."))
+
+
+class TestScriptOptimizer:
+    def test_optimizer_selects_best(self, tmp_path):
+        import sys, json
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from vidharness.consumers.script_optimizer import ScriptOptimizer
+        from vidharness.seams import Artifact, ArtifactMeta, JudgeCriteria
+        from vidharness.core.memory import ExperienceMemory
+        from vidharness.core.experiment import Experiment
+
+        class FakeScriptAdapter:
+            name = "fake"
+            def __init__(self):
+                self.n = 0
+            def generate(self, query, template, workdir, **kw):
+                self.n += 1
+                payload = {"segments": [{"video_prompt": "p", "narration": f"旁白{self.n}",
+                                         "duration": 8}]}
+                path = Path(workdir) / f"s{self.n}.json"
+                path.write_text(json.dumps(payload))
+                return Artifact(kind="script", path=path, meta=ArtifactMeta(), payload=payload)
+
+        class FakeJudge:
+            def __init__(self):
+                self.n = 0
+            def judge(self, media, criteria, workdir, **kw):
+                self.n += 1
+                score = min(9.0, 5.0 + self.n * 1.5)   # 越来越好
+                return Artifact(kind="scores", path=Path(workdir)/"j.json",
+                                meta=ArtifactMeta(),
+                                payload={"score": score, "passed": score >= 6,
+                                         "feedback": "再真实一点" if score < 8 else "pass"})
+
+        exp = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl")
+        opt = ScriptOptimizer(FakeScriptAdapter(), FakeJudge(), mem, exp,
+                              rounds=2, candidates=2, target_score=9.5)
+        crit = [JudgeCriteria(name="旁白自然", question="q", min_score=6)]
+        best, history = opt.optimize("目标", "brief", crit, tmp_path / "s")
+        assert best["segments"][0]["narration"] == "旁白3"   # 首个最高分候选
+        assert len(history) == 4                              # 两轮跑满
+        assert max(r["score"] for r in history) == 9.0

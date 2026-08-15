@@ -22,6 +22,13 @@ def cmd_adapters(_args):
         print(f"  {name:28s} -> {cls}")
 
 
+def cmd_feedback(args):
+    from .core.memory import ExperienceMemory
+    mem = ExperienceMemory(Path(args.output) / "_memory.jsonl")
+    mem.add_experience(args.text, source="用户反馈")
+    print(f"已写入经验记忆（当前 {len(mem.experience_lines())} 条经验）")
+
+
 def cmd_report(args):
     from .core.report import report
     base = Path(args.output)
@@ -66,6 +73,11 @@ def main(argv=None):
 
     pa = sub.add_parser("adapters", help="列出适配器")
     pa.set_defaults(fn=cmd_adapters)
+
+    pf = sub.add_parser("feedback", help="把用户意见写入经验记忆（环境反馈直达）")
+    pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")
+    pf.add_argument("--output", default="experiments", help="实验输出根目录")
+    pf.set_defaults(fn=cmd_feedback)
 
     prp = sub.add_parser("report", help="生成实验对比报告")
     prp.add_argument("task", help="任务名（如 story_short）")

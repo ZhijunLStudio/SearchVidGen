@@ -45,13 +45,38 @@ class SegmentDirector:
             promote_threshold=int(mem_cfg.get("promote_threshold", 2)),
         )
 
-    # ---- 1. 剧本（生成 → 文本评测 → 反馈入记忆 → 重试）----
+    # ---- 1. 剧本（自主优化循环：多轮生成 → 裁判评分 → 反馈入记忆 → 择优进化）----
     def stage_script(self, query: str) -> Dict[str, Any]:
         # 断点续跑：剧本也要缓存（否则重跑的新剧本与已生成片段不对齐）
         existing = self.exp.find_existing("script", "script")
         if existing and existing.payload:
             print("   复用已有剧本（断点续跑）")
             return existing.payload
+        brief = self.cfg.get("brief") or ""
+        opt_cfg = self.cfg.get("script_optimize")
+        if opt_cfg:
+            from .script_optimizer import ScriptOptimizer
+            opt = ScriptOptimizer(
+                self.script_adapter, self.judge, self.memory, self.exp,
+                rounds=int(opt_cfg.get("rounds", 2)),
+                candidates=int(opt_cfg.get("candidates", 2)),
+                target_score=float(opt_cfg.get("target_score", 7.5)),
+            )
+            print(f"   剧本自主优化（{opt.rounds}轮×{opt.candidates}候选，目标≥{opt.target_score}）")
+            payload, history = opt.optimize(
+                query, brief, self._criteria("script_judge"),
+                self.exp.artifacts_dir / "script")
+            best = max(history, key=lambda r: r.get("score", 0))
+            # 保存最终选定剧本为正式产物
+            import shutil
+            art_path = self.exp.artifacts_dir / "script" / "script.json"
+            art_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+            from ..seams import Artifact, ArtifactMeta
+            final_art = Artifact(kind="script", path=art_path, meta=ArtifactMeta(
+                adapter=self.script_adapter.name, params={"optimizer": best}))
+            self.exp.save_artifact("script", final_art, name="script")
+            return payload
         brief = self.cfg.get("brief") or ""
         crit = self._criteria("script_judge")
         retry = self._retry("script_retry")
