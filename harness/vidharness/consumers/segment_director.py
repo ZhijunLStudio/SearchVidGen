@@ -35,24 +35,66 @@ class SegmentDirector:
         if config.get("audio_verify"):
             required["audio"] = True
         caps = check_capabilities(gen_name, required, context="generator")
-        # 记录进 manifest 便于对比
         exp.manifest["generator_capabilities"] = caps
         self.judge = resolve(config["judge"]["adapter"])(**config["judge"].get("params", {}))
-        self.task = config.get("task", {})
+        # 经验记忆：环境反馈在此积累，跨任务泛化（无领域模板）
+        from ..core.memory import ExperienceMemory
+        mem_cfg = config.get("memory", {})
+        self.memory = ExperienceMemory(
+            path=exp.base_dir / mem_cfg.get("path", "_memory.jsonl"),
+            promote_threshold=int(mem_cfg.get("promote_threshold", 2)),
+        )
 
-    # ---- 1. 剧本 ----
+    # ---- 1. 剧本（生成 → 文本评测 → 反馈入记忆 → 重试）----
     def stage_script(self, query: str) -> Dict[str, Any]:
         # 断点续跑：剧本也要缓存（否则重跑的新剧本与已生成片段不对齐）
         existing = self.exp.find_existing("script", "script")
         if existing and existing.payload:
             print("   复用已有剧本（断点续跑）")
             return existing.payload
-        with Timer():
-            art = self.script_adapter.generate(
-                query=query, template=self.task,
-                workdir=self.exp.artifacts_dir / "script")
-            self.exp.save_artifact("script", art, name="script")
-        return art.payload
+        brief = self.cfg.get("brief") or ""
+        crit = self._criteria("script_judge")
+        retry = self._retry("script_retry")
+        feedback = ""
+        last = None
+        import json as _json
+        for attempt in range(1, retry.max_attempts + 1):
+            template = {
+                "brief": brief,
+                "segments": int(self.cfg.get("segments", 4)),
+                "experience": self.memory.experience_lines(),
+            }
+            with Timer():
+                art = self.script_adapter.generate(
+                    query=query, template=template,
+                    workdir=self.exp.artifacts_dir / "script")
+                self.exp.save_artifact("script", art, name="script")
+            last = art
+            if not crit:
+                return art.payload
+            # 文本评测：把剧本内容嵌入问题交给裁判
+            q = {c.name: f"{c.question}\n\n剧本内容：\n{_json.dumps(art.payload, ensure_ascii=False)}"
+                 for c in crit}
+            try:
+                verdict_art = self.judge.judge(media=[], criteria=q,
+                                               workdir=self.exp.eval_dir)
+                verdict = verdict_art.payload
+                rec = {"attempt": attempt, "artifact": str(art.path), **verdict}
+                self.exp.save_eval("script_judge", [rec])
+                feedback = verdict.get("feedback", "")
+                # 裁判反馈一律进记忆（环境信号）：通过时的改进建议与失败原因都记录，
+                # 重复出现自动提升为跨任务经验
+                if feedback and feedback.strip() and "pass" not in feedback[:4].lower():
+                    kind = "feedback" if not verdict.get("passed") else "suggestion"
+                    self.memory.add(feedback, source=f"{self.exp.run_id}/script", kind=kind)
+                if verdict.get("passed"):
+                    return art.payload
+            except Exception as e:
+                print(f"   ⚠️ 剧本评测不可用({type(e).__name__})，跳过")
+                return art.payload
+            if retry.inject_feedback and feedback:
+                brief = f"{brief}\n上一稿的问题：{feedback}".strip()
+        return (last.payload if last else {"segments": []})
 
     # ---- 2/3. 逐段生成 + 逐段评测 ----
     def stage_segments(self, script: Dict[str, Any]) -> List[Path]:

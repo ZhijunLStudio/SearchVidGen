@@ -48,8 +48,26 @@ class DeepSeekScriptGenerator:
         import time as _t
         t0 = _t.time()
         workdir.mkdir(parents=True, exist_ok=True)
-        system = template.get("system", "你是专业的短视频剧本与提示词工程师。")
-        user = template["user_template"].format(query=query, **template.get("defaults", {}))
+        # 通用提示组装：协议契约 + 用户目标(brief) + 环境经验，无领域模板
+        segments = template.get("segments", 4)
+        system = (
+            "你是资深影视导演。把用户的目标拆成 8-15 秒一镜的分镜计划，"
+            "每镜含画面指令(video_prompt，中文50-90字：镜头运动/主体动作/环境/情绪)"
+            "与旁白(narration)。画面指令末尾写音频要求（环境音与旁白朗读）。"
+            "各镜之间机位/景别要有变化。只输出 JSON。"
+        )
+        parts = [f"目标：{query}（共 {segments} 个分镜）"]
+        brief = template.get("brief")
+        if brief:
+            parts.append(f"补充要求：{brief}")
+        experience = template.get("experience", [])
+        if experience:
+            parts.append("经验教训（务必遵守）：\n" + "\n".join(f"- {e}" for e in experience))
+        parts.append(
+            "输出 JSON（不要其他文字）：\n"
+            '{"segments": [{"video_prompt": "...", "narration": "...", "duration": 8}]}'
+        )
+        user = "\n\n".join(parts)
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system},
@@ -63,7 +81,8 @@ class DeepSeekScriptGenerator:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         meta = ArtifactMeta(
             adapter=self.name, model=resp.model,
-            params={"temperature": self.temperature, "max_tokens": self.max_tokens},
+            params={"temperature": self.temperature, "max_tokens": self.max_tokens,
+                    "brief": brief, "n_experience": len(experience)},
             elapsed_s=_t.time() - t0,
             cost_usd=_estimate_cost(resp.usage.prompt_tokens, resp.usage.completion_tokens, self.model),
         )

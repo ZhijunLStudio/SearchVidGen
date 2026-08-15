@@ -23,6 +23,7 @@ from ..seams import Artifact, ArtifactMeta
 class Experiment:
     def __init__(self, task: str, base_dir: Path, run_id: Optional[str] = None):
         self.task = task
+        self.base_dir = Path(base_dir)
         self.run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
         self.root = Path(base_dir) / task / self.run_id
         self.artifacts_dir = self.root / "artifacts"

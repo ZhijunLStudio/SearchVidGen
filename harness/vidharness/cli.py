@@ -41,6 +41,10 @@ def cmd_run(args):
         print(f"♻️ 断点续跑: {exp.root}")
     else:
         exp = Experiment(task=task, base_dir=Path(args.output))
+    if args.brief:
+        cfg["brief"] = args.brief
+    if args.segments:
+        cfg["segments"] = args.segments
     director = SegmentDirector(exp, cfg)
     final = director.run(args.query)
     print(json.dumps({"final": str(final), "experiment": str(exp.root)},
@@ -53,7 +57,9 @@ def main(argv=None):
 
     pr = sub.add_parser("run", help="运行任务")
     pr.add_argument("task", help="任务配置 YAML")
-    pr.add_argument("--query", required=True, help="搜索词/故事主题")
+    pr.add_argument("--query", required=True, help="目标（故事主题/产品/想法）")
+    pr.add_argument("--brief", default=None, help="补充要求（可选，运行时给出，如风格/受众/时长）")
+    pr.add_argument("--segments", type=int, default=None, help="分镜段数（默认4）")
     pr.add_argument("--output", default="experiments", help="实验输出根目录")
     pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)

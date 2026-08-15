@@ -1,60 +1,78 @@
-# 衔接策略对比实验：fl2va 硬衔接 vs ref2va 参考衔接
-# 用法（依次跑，report 自动对比）：
-#   python -m vidharness.cli run tasks/bench_chain_hard.yaml --query "..."
-#   python -m vidharness.cli run tasks/bench_chain_ref.yaml  --query "..."
-# 之后：python -m vidharness.cli report story_short
-# 注意：ref 模式要求 generator 提供者 variant=ref2va
-
+# 衔接策略对比变体：首尾帧硬衔接(fl2va)。业务与评测配置同 story.yaml（无领域模板）。
 task_name: story_short
-
-task:
-  system: "你是一位AI短片导演。你只输出分镜计划，不负责生成画面。"
-  user_template: |
-    请根据主题"{query}"，写一个约30-45秒的完整短片分镜计划，共{segment_count}段（每段8-15秒）。
-    要求：
-    1. 全片只有一个主角，每段的 video_prompt 都必须用相同措辞描述主角外貌与服装
-    2. 每段 video_prompt 用中文写（50-90字）：镜头运动、主体动作、环境动态、情绪氛围
-    3. video_prompt 末尾补充音频要求："音频：<环境音/音效>，并用中文旁白清晰朗读：「<该段 narration>」"
-    4. 段间镜头要求：每段开头镜头须与上一段结尾自然衔接，但机位/景别必须变化，避免冻结帧式跳切
-    5. narration：每段中文字幕文本（≤15字）
-    严格按 JSON 输出：{{"segments":[{{"video_prompt":"...","narration":"...","duration":8}}]}}
-  defaults:
-    segment_count: 4
-
+segments: 4
 pipeline:
   script:
     adapter: script.deepseek-v4-flash
-    params: {model: deepseek-chat, temperature: 0.8}
+    params:
+      model: deepseek-chat
+      temperature: 0.9
   generator:
     adapter: generator.minimax-h3-local
     params:
       model_path: /data-ssd/lizhijun/models/MiniMax-H3
-      gpu: "4,6"
-      variant: fl2va        # ref 实验版改为 ref2va
+      gpu: 4,6
+      variant: fl2va
       steps: 30
-      seed: 20260814
+      seed: 20260815
   context:
-    chain_mode: hard        # ref 实验版改为 ref
+    chain_mode: hard
     anchor_refs: []
-
 judge:
   adapter: judge.openai-compat
   params:
     base_url: http://127.0.0.1:8030/v1
     model: judge-qwen3.5-27b
     frame_samples: 4
-    disable_thinking: true   # 思考关闭：防 token 燃烧；如需更严谨评分可设 false
-
+    disable_thinking: true
+script_judge:
+- name: 叙事完整
+  question: 分镜是否构成完整有起伏的故事，段间有因果与推进？
+  weight: 1.0
+  min_score: 6
+- name: 旁白自然
+  question: 旁白是否像真人说话（口语化、有情绪、长短句结合），而不是口号式短句或播音腔？僵硬口号给低分
+  weight: 1.2
+  min_score: 6
+  aliases:
+  - 自然度
+  - 口语化
+- name: 可生成性
+  question: 画面指令是否具体可执行（主体/动作/镜头明确），适合视频模型直接生成？
+  weight: 1.0
+  min_score: 6
+script_retry:
+  max_attempts: 2
+  inject_feedback: true
 segment_judge:
-  - {name: 与指令一致性, question: "视频是否准确呈现生成指令描述的主体、动作、镜头与环境？", weight: 1.0, min_score: 6, aliases: [一致性]}
-  - {name: 画面质量, question: "是否存在明显缺陷（肢体畸形、闪变、主体崩坏、水印杂质）？无缺陷给高分", weight: 1.0, min_score: 6}
-  - {name: 音效场景相符, question: "画面内容是否与指令描述的音效场景相符？", weight: 0.8, min_score: 5}
-
+- name: 与指令一致性
+  question: 视频是否准确呈现生成指令描述的主体、动作、镜头与环境？
+  weight: 1.0
+  min_score: 6
+  aliases:
+  - 一致性
+- name: 画面质量
+  question: 是否存在明显缺陷（肢体畸形、闪变、主体崩坏、水印杂质）？无缺陷给高分
+  weight: 1.0
+  min_score: 6
+- name: 音效场景相符
+  question: 画面内容是否与指令描述的音效场景相符？
+  weight: 0.8
+  min_score: 5
+segment_retry:
+  max_attempts: 2
+  inject_feedback: true
 cross_judge:
-  - {name: 跨段一致性, question: "上一段结尾与下一段开头：人物外貌服装是否一致、场景是否自然衔接？", weight: 1.0, min_score: 6}
-  - {name: 叙事推进, question: "这两帧是否为合理推进的新镜头（机位/景别有变化、叙事在发展），而不是同一画面的复制（冻结帧）？完全相同的画面应给低分", weight: 1.0, min_score: 5}
-
-segment_retry: {max_attempts: 2, inject_feedback: true}
-
+- name: 跨段一致性
+  question: 上一段结尾与下一段开头：人物外貌服装是否一致、场景是否自然衔接？
+  weight: 1.0
+  min_score: 6
+- name: 叙事推进
+  question: 这两帧是否为合理推进的新镜头（机位/景别有变化），而不是同一画面的复制（冻结帧）？完全相同的画面应给低分
+  weight: 1.0
+  min_score: 5
 audio_verify:
   adapter: transcribe.sensevoice-small
+memory:
+  path: _memory.jsonl
+  promote_threshold: 2
