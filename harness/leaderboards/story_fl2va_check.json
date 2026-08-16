@@ -1,7 +1,7 @@
 {
   "task": "story_fl2va_check",
-  "updated_at": "2026-08-16T11:25:14.895287",
-  "run_count": 1,
+  "updated_at": "2026-08-16T11:55:26.854501",
+  "run_count": 2,
   "runs": [
     {
       "run_id": "20260816_105600_84a609",
@@ -36,6 +36,37 @@
       "local_gpu_hours": 0.345,
       "created_at": "2026-08-16T10:56:00.976360",
       "finished_at": "2026-08-16T11:17:48.667699"
+    },
+    {
+      "run_id": "20260816_112559_5486bd",
+      "bench_cell": null,
+      "chain_mode": "hard",
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 1.0
+      },
+      "stage_scores": {
+        "script_judge": {},
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 10.0,
+          "叙事推进": 1.0
+        }
+      },
+      "passed_rate": 0.4,
+      "total_cost_usd": 0.00040075,
+      "total_elapsed_s": 1349.1654644012451,
+      "local_gpu_hours": 0.369,
+      "created_at": "2026-08-16T11:25:59.747972",
+      "finished_at": "2026-08-16T11:49:21.420213"
     }
   ]
 }

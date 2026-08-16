@@ -43,6 +43,7 @@ segment_retry: {max_attempts: 1, inject_feedback: false}
 
 cross_judge:
   - {name: 跨段一致性, question: "两帧人物/场景是否自然衔接？", weight: 1.0, min_score: 6}
+  - {name: 叙事推进, question: "这两帧是否为合理推进的新镜头（机位/景别有变化），而不是同一画面的复制（冻结帧）？完全相同的画面应给低分", weight: 1.0, min_score: 5}
 
 memory:
   path: _memory.jsonl
