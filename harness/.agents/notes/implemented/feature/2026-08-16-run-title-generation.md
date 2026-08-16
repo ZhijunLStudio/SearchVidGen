@@ -43,4 +43,8 @@ run 目录只有 run_id 哈希，leaderboard/对比报告里扫一眼分不清�
 - E40 证据：真实 DeepSeek API 生成"雨夜暖面"（4 字 ≤12），
   manifest/事件流/leaderboard MD/详情页全链路一致，doctor 干净；
   单测 5 个（生成持久化/重试恢复/失败静默/钩子时序/表格转义）。
+- **E43 补丁（当前现实）**：E40 验收用温度 0.3 掩盖了缺陷——提供者
+  导演人格在温度 0/0.7/1.0 下都返回分镜而非 title（4 个 bench 格
+  全部无标题）。已改为 script 提供者 `kw.system` 覆盖 + 标题编辑人格
+  + temperature 0.3；温度 0 适配器实测产出"橘猫窗台观雨"。
 - 后续可做：多语言 query 标题策略、title 进 bench 格摘要。

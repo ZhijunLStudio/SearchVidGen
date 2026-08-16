@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from vidharness.core.registry import load_builtin_adapters, instantiate  # noqa: E402
+from vidharness.core.registry import load_builtin_adapters  # noqa: E402
 from vidharness.core.experiment import Experiment  # noqa: E402
 from vidharness.consumers.segment_director import SegmentDirector  # noqa: E402
 from vidharness.core.invariants import check_experiment  # noqa: E402

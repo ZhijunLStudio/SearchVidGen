@@ -7,7 +7,6 @@
 脚本不硬编码端点/模型名）；旧 run 无快照则响亮失败并给出指引。
 """
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -23,8 +22,8 @@ def load_judge_from_run(run_dir: Path):
     cfg_file = run_dir / "config.yaml"
     if not cfg_file.exists():
         raise RuntimeError(
-            f"run 缺少配置快照 config.yaml（2026-08-16 前的旧 run）。"
-            f"重新运行该任务生成快照后再收集证据，保证证据与运行同口径。")
+            "run 缺少配置快照 config.yaml（2026-08-16 前的旧 run）。"
+            "重新运行该任务生成快照后再收集证据，保证证据与运行同口径。")
     cfg = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
     judge_cfg = cfg.get("judge") or {}
     name = judge_cfg.get("adapter")

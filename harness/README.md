@@ -551,6 +551,24 @@ E34 方向 → E37 因果）。
 - 裁判换代的验收标准：换模型后重跑本脚本——旧视频应有合理新分布，
   同视频重复 sd 仍应为 0
 
+### E43：种子控制生成确定性——配对 A/B 前提实证 + 三个连带修复（2026-08-16）
+- 种子优先级链 `kw.seed > GenRequest.seed > 构造参数`（GenRequest 补
+  seed 字段）；bench 矩阵（2 种子 × 2 重复） + 固定提示直测：
+  **同种子对 MAE=0.0（像素级相同），异种子对 MAE=69.67**——H3 t2va
+  固定种子完全确定性；bench 版同种子残留 13-26 全部来自剧本措辞混淆
+  （DeepSeek API 温度 0 下四次剧本仍互不相同）
+- **方法论结论**：E42（裁判 sd=0）+ E43（同种子生成 sd=0）→ 配对种子
+  A/B 在生成层无噪声（固定 query + 剧本温度 0/无剧本评审 + 匹配种子），
+  E38 的 n≈8-10/臂需求在生成层效应上坍塌为小样本配对设计
+- 连带修复 ①异构生成器参数格切换 OOM：adapters_cache 双实例驻留显存
+  → `MiniMaxH3Local.dispose()` + `bench.evict_generators()`（兼解除
+  bench_api_local 潜在阻塞）；②标题静默失败：提供者导演人格压倒
+  用户指令 → script 提供者 `kw.system` 覆盖（变换任务自拥系统指令），
+  温度 0 适配器实测产出"橘猫窗台观雨"；③GenRequest.seed 缝级声明缺失
+  被真实运行 fail-loud 逮住
+- 新工具：scripts/compare_seed_runs.py、scripts/seed_determinism_direct.py、
+  tasks/bench_seed.yaml；账本 +1.53 GPU-h（17.75h/$21.30）
+
 ### E29：kill -9 故障演练——崩溃恢复实证 + 僵尸进程预检（2026-08-16）
 对真实生成中的 run 执行 SIGKILL 演练：
 - 事件溯源按设计工作：kill 后 events.jsonl 完好、投影一致、无 finalized

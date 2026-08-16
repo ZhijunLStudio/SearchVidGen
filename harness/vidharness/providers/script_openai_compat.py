@@ -51,7 +51,9 @@ class OpenAICompatScriptGenerator:
         import time as _t
         t0 = _t.time()
         workdir.mkdir(parents=True, exist_ok=True)
-        system = (
+        # system 默认导演/分镜人格；变换任务经 kw.system 覆盖（E43，
+        # 与 deepseek_script 同一语义）
+        system = kw.get("system") or (
             "你是资深影视导演。把用户的目标拆成 8-15 秒一镜的分镜计划，"
             "每镜含画面指令(video_prompt，中文50-90字：镜头运动/主体动作/环境/情绪)"
             "与旁白(narration)。画面指令末尾写音频要求（环境音与旁白朗读）。"

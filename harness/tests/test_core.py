@@ -2301,7 +2301,7 @@ class TestRunTitle:
         class FakeTitleScript:
             name = "script.fake-title"
             def generate(self, query, template, workdir, **kw):
-                calls.append((query, template))
+                calls.append((query, template, kw))
                 if fail:
                     raise RuntimeError("title api down")
                 payload = payloads.pop(0) if payloads else {"title": "星际迷航"}
@@ -2323,6 +2323,8 @@ class TestRunTitle:
         assert exp.manifest["total_cost_usd"] == 0.0          # 假适配器无成本
         assert len(calls) == 1
         assert "标题" in calls[0][1]["brief"]                  # 提示契约在日志里可见
+        assert calls[0][2].get("temperature") == 0.3           # E43：创意温度
+        assert "标题编辑" in str(calls[0][2].get("system"))    # E43：变换任务自拥人格
         assert replay_events(exp.events_path)["title"] == "星际迷航"  # 事件流可恢复
         exp.finalize()                                        # finalize 后体检仍通过
         assert check_experiment(exp.root) == []
@@ -2543,3 +2545,85 @@ class TestSilentBehaviorAuditFixes:
         assert history[0]["error"] and history[0]["score"] is None   # 失败候选
         assert history[1]["score"] == 8.0                            # 成功候选照常
         assert mem.experience_lines() == []                          # 零噪声进记忆
+
+
+class TestSeedOverride:
+    """逐调用种子覆盖（E26 同源）：kw > req.seed > 构造参数。"""
+
+    def test_effective_seed_priority(self):
+        from vidharness.providers.minimax_h3 import MiniMaxH3Local
+        f = MiniMaxH3Local._effective_seed
+        assert f(None, None, {}) is None
+        assert f(None, 42, {}) == 42
+        assert f(7, 42, {}) == 7
+        assert f(7, 42, {"seed": 99}) == 99
+        assert f(None, 42, {"seed": 0}) == 0        # 0 是合法种子
+        assert f(7, None, {}) == 7
+
+
+class TestBenchGeneratorEviction:
+    """E43：异构生成器参数切换必须释放旧实例（双模型驻留显存 → OOM）。"""
+
+    def test_generator_cache_key_changes_with_params(self):
+        from vidharness.core.bench import generator_cache_key
+        base = {"pipeline": {"generator": {"adapter": "g", "params": {"seed": 1}}}}
+        same = {"pipeline": {"generator": {"adapter": "g", "params": {"seed": 1}}}}
+        diff = {"pipeline": {"generator": {"adapter": "g", "params": {"seed": 2}}}}
+        assert generator_cache_key(base) == generator_cache_key(same)
+        assert generator_cache_key(base) != generator_cache_key(diff)
+
+    def test_evict_generators_disposes_and_removes_only_generators(self):
+        from vidharness.core.bench import evict_generators
+        disposed = []
+
+        class FakeGen:
+            def dispose(self):
+                disposed.append("disposed")
+
+        cache = {("generator.x", "{}"): FakeGen(),
+                 ("script.y", "{}"): object()}
+        released = evict_generators(cache)
+        assert released == ["generator.x"]
+        assert not any(str(k[0]).startswith("generator.") for k in cache)
+        assert ("script.y", "{}") in cache          # 非生成器实例不动
+        assert disposed == ["disposed"]
+
+    def test_evict_generators_tolerates_missing_dispose(self):
+        from vidharness.core.bench import evict_generators
+        cache = {("generator.x", "{}"): object()}
+        assert evict_generators(cache) == ["generator.x"]  # 无 dispose 也出缓存
+
+
+class TestScriptSystemOverride:
+    def test_system_kw_overrides_director_persona(self, tmp_path, monkeypatch):
+        """E43：变换任务经 kw.system 覆盖提供者人格（导演→标题编辑）。"""
+        from types import SimpleNamespace
+        from vidharness.core.registry import instantiate
+        captured = {}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(content='{"segments": []}')
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="deepseek-chat",
+                                       usage=SimpleNamespace(prompt_tokens=10,
+                                                            completion_tokens=10))
+
+        monkeypatch.setattr("vidharness.providers.deepseek_script.OpenAI", FakeClient)
+        gen = instantiate("script.deepseek-v4-flash", {"api_key": "k"})
+        art = gen.generate("q", {}, tmp_path, system="你是标题编辑。只输出 JSON。")
+        assert captured["create"]["messages"][0]["content"] == \
+            "你是标题编辑。只输出 JSON。"            # system 覆盖生效
+        assert art.meta.params["system"] == "你是标题编辑。只输出 JSON。"  # 可审计
+        # 缺省不传 system → 导演人格
+        gen.generate("q", {}, tmp_path)
+        assert "资深影视导演" in captured["create"]["messages"][0]["content"]

@@ -1,0 +1,9 @@
+# 生成确定性检验（E43）：唯一变量 = generator 种子。
+# 基座任务剧本温度 0 + 无剧本评审 → 四格剧本逐字一致，视频差异只来自生成侧。
+# repeats 2/格 → 同种子对 vs 异种子对的像素差分解。
+bench:
+  base: tasks/story_seed_check.yaml
+  matrix:
+    - pipeline.generator.params.seed: [20260816, 20260817]
+  repeats: 2
+  local_min_per_seg: 6

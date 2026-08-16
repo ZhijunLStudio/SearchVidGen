@@ -48,6 +48,7 @@ class GenRequest:
 
     - refs: 参考图（角色/风格锚点）
     - first_frame / last_frame: 首/尾帧条件（跨段衔接）
+    - seed: 逐请求随机种子（None=提供者构造级种子/缺省随机）
     """
     text: str
     refs: List[Path] = field(default_factory=list)
@@ -56,6 +57,7 @@ class GenRequest:
     duration: Optional[int] = None
     ratio: Optional[str] = None
     style: Dict[str, Any] = field(default_factory=dict)
+    seed: Optional[int] = None
 
 
 @runtime_checkable

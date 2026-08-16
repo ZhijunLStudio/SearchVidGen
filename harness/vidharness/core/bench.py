@@ -109,6 +109,47 @@ def _generator_name(cfg: Dict[str, Any]) -> str:
     return gen["adapter"]
 
 
+def generator_cache_key(cfg: Dict[str, Any]) -> str:
+    """格的生成器身份键：参数变了 = 不同实例（缓存复用边界）。"""
+    gen = cfg.get("pipeline", {}).get("generator", {})
+    import json as _json
+    return _json.dumps({"adapter": gen.get("adapter"), "route": gen.get("route"),
+                        "params": gen.get("params", {})},
+                       sort_keys=True, ensure_ascii=False)
+
+
+def evict_generators(adapters_cache: Dict[Any, Any]) -> List[str]:
+    """异构生成器参数切换时释放旧生成器实例（E43 OOM 修复）。
+
+    instantiate 缓存键 = (name, params-json)。bench 相邻格的 generator
+    参数不同时，旧实例与新实例会同时驻留显存（每个本地模型 ~78GB）
+    → 第二格加载 OOM。调度方在参数变化时调用本函数：
+    dispose（资源由提供者拥有）→ 出缓存 → gc + empty_cache。
+    返回被释放的实例名。
+    """
+    released: List[str] = []
+    for key in list(adapters_cache):
+        name = key[0] if isinstance(key, tuple) and key else str(key)
+        if name.startswith("generator."):
+            obj = adapters_cache.pop(key)
+            dispose = getattr(obj, "dispose", None)
+            if dispose is not None:
+                try:
+                    dispose()
+                except Exception:
+                    pass
+            released.append(name)
+    if released:
+        import gc
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+    return released
+
+
 def validate_cell(label: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
     """规划期校验：配置 schema + 提供者实例化 + 能力要求。
 

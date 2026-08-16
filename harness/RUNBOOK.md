@@ -59,6 +59,11 @@ python -m vidharness.cli report story_short --run <run_id>   # 单 run 详情页
 python scripts/compare_chains.py experiments/story_short
 python scripts/collect_evidence.py experiments/story_short/<run_id>
 
+# 配对种子 A/B（E42/E43 结论：裁判 sd=0 + 同种子生成 MAE=0，
+# 生成层效应用配对设计免重复采样；异构生成器参数格自动 dispose+evict）
+python -m vidharness.cli bench tasks/bench_seed.yaml --query "..." --output experiments
+python scripts/compare_seed_runs.py --a experiments/<task>/<run_a> --b experiments/<task>/<run_b>
+
 # 基准矩阵（一次只变一个变量；规划期全格校验，错误不花 GPU）
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..." --dry-run
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..."

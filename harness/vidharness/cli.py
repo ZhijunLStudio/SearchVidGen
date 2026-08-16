@@ -40,7 +40,14 @@ def _generate_run_title(script_adapter, query: str, exp: Experiment) -> str:
             art = script_adapter.generate(
                 query=f"为这个视频故事起一个 12 字以内的标题：{query}",
                 template={"brief": brief, "segments": 1},
-                workdir=workdir)
+                workdir=workdir,
+                # E43 实测：script 提供者的导演人格（system 提示）在
+                # 任意温度下都压倒用户指令、返回分镜而非 title——
+                # 变换任务的系统指令归任务自身拥有（kw.system 覆盖），
+                # 温度取创意值（E26 的 kw 覆盖通道）
+                system=("你是视频标题编辑。为故事起一个 12 字以内的中文标题。"
+                        '只输出 JSON：{"title": "<标题>"}，不要任何其他文字。'),
+                temperature=0.3)
             title = str((art.payload or {}).get("title", "")).strip()
             if title:
                 exp.save_artifact("title", art, name="title")
@@ -305,10 +312,12 @@ def cmd_bench(args):
     if args.dry_run:
         print("dry-run：未执行生成")
         return
-    # 逐格执行；相同参数的适配器跨格复用（避免每格重载生成模型，E19 已知成本）
+    # 逐格执行；相同参数的适配器跨格复用（避免每格重载生成模型，E19 已知成本）；
+    # 生成器参数变化时先释放旧实例（E43：双实例同时驻留显存 → OOM）
     # 格级断点续跑：已完成格跳过、未完成格续跑（长矩阵崩溃不重来）
-    from .core.bench import bench_cell_status
+    from .core.bench import bench_cell_status, evict_generators, generator_cache_key
     adapters_cache: dict = {}
+    prev_gen_key: str | None = None
     for r in rows:
         task_name = r["cfg"].get("task_name", "story")
         status = bench_cell_status(Path(args.output), task_name, r["label"],
@@ -316,6 +325,12 @@ def cmd_bench(args):
         if status["run_id"] and status["finished"]:
             print(f"\n⏭ bench 格 [{r['label']}] 已完成（{status['run_id']}），跳过")
             continue
+        gen_key = generator_cache_key(r["cfg"])
+        if prev_gen_key is not None and gen_key != prev_gen_key:
+            released = evict_generators(adapters_cache)
+            if released:
+                print(f"  ♻️ 生成器参数变化，释放旧实例: {released}（E43）")
+        prev_gen_key = gen_key
         resume = status["run_id"]
         note = f"（续跑 {resume}）" if resume else ""
         print(f"\n▶ bench 格 [{r['label']}]{note}")

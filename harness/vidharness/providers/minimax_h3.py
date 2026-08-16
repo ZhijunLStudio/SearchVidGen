@@ -137,7 +137,6 @@ class MiniMaxH3Local:
             check_gpu_free(self.gpu)   # 加载前显存预检（E29：僵尸进程占卡时报清晰指引）
             os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6" 或 "2"
             import torch
-
             if self.variant == "ref2va":
                 # 官方 int8 配方（参考模式单卡方案）：
                 # transformer_ref/text_encoder 以 Int8WeightOnly 量化加载（显存减半），
@@ -279,9 +278,13 @@ class MiniMaxH3Local:
         if req.first_frame is None:
             w, h = req.style.get("canvas", RATIO_CANVAS.get(req.ratio or "16:9", (1344, 768)))
             kwargs["height"], kwargs["width"] = h, w
-        if self.seed is not None:
+        # 种子优先级：单次调用 kw > 请求 req.seed > 构造参数（E26 同源：
+        # 逐调用覆盖让一个已加载实例可做多种子生成，证据脚本/种子消融
+        # 不必为每个种子重载模型；构造级种子仍是 bench 矩阵的配置面）
+        effective_seed = self._effective_seed(req.seed, self.seed, kw)
+        if effective_seed is not None:
             import torch
-            kwargs["generator"] = torch.Generator("cuda").manual_seed(self.seed)
+            kwargs["generator"] = torch.Generator("cuda").manual_seed(effective_seed)
         if self.steps is not None:
             kwargs["num_inference_steps"] = self.steps
 
@@ -311,8 +314,33 @@ class MiniMaxH3Local:
                                     "num_frames": kwargs["num_frames"],
                                     # 可重建：完整提示落盘（对齐"模型可见 ⟺ 日志"）
                                     "prompt": req.text},
-                            seed=self.seed, elapsed_s=time.time() - t0)
+                            seed=effective_seed, elapsed_s=time.time() - t0)
         return Artifact(kind="video", path=vid_path, meta=meta)
+
+    @staticmethod
+    def _effective_seed(req_seed, default_seed, kw):
+        """种子优先级：单次调用 kw > 请求 req.seed > 构造参数。"""
+        for v in (kw.get("seed"), req_seed, default_seed):
+            if v is not None:
+                return v
+        return None
+
+    def dispose(self) -> None:
+        """释放模型与显存（bench 异构参数格切换时由调度方调用，E43）。
+
+        提供者拥有自己的运行时资源（package-owned invariant）：缓存
+        复用只管同参数实例；参数变化的旧实例必须显式 dispose，
+        否则新模型与旧模型同时驻留显存 → OOM。幂等：dispose 后
+        再 generate 会重新 _get_pipe 加载。
+        """
+        self._pipe = None
+        import gc
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
 
     @staticmethod
     def _save_video(video, path: Path):

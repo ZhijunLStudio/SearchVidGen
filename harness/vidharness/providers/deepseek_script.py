@@ -64,7 +64,10 @@ class DeepSeekScriptGenerator:
         workdir.mkdir(parents=True, exist_ok=True)
         # 通用提示组装：协议契约 + 用户目标(brief) + 环境经验，无领域模板
         # （提示契约由 script 缝的 build_script_prompt 拥有，见 seams/script.py）
-        system = (
+        # system 默认是导演/分镜规划人格；变换任务（标题/归纳，E33/E43）
+        # 经 kw.system 覆盖——变换任务的系统指令归任务自身拥有，
+        # 否则 provider 人格会压倒用户指令（E43 实测：temperature 1.0 仍返回分镜）
+        system = kw.get("system") or (
             "你是资深影视导演。把用户的目标拆成 8-15 秒一镜的分镜计划，"
             "每镜含画面指令(video_prompt，中文50-90字：镜头运动/主体动作/环境/情绪)"
             "与旁白(narration)。画面指令末尾写音频要求（环境音与旁白朗读）。"
@@ -99,8 +102,9 @@ class DeepSeekScriptGenerator:
             adapter=self.name, model=resp.model,
             params={"temperature": effective_temperature, "max_tokens": self.max_tokens,
                     "brief": brief, "n_experience": len(experience),
-                    # 可重建：完整输入模板落盘（对齐"模型可见 ⟺ 日志"）
-                    "template": template},
+                    # 可重建：完整输入模板 + 有效系统人格落盘
+                    # （对齐"模型可见 ⟺ 日志"；E43 变换任务的 system 覆盖可审计）
+                    "system": system, "template": template},
             elapsed_s=_t.time() - t0,
             cost_usd=_estimate_cost(resp.usage.prompt_tokens, resp.usage.completion_tokens, self.model),
         )

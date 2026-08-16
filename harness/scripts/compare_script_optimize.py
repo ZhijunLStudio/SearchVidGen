@@ -45,7 +45,7 @@ def single_shot(script_adapter, judge, query, exp, workdir, trial):
 
 
 def optimized(script_adapter, judge, query, exp, workdir, rounds=2, candidates=2):
-    mem = ExperienceMemory(workdir.parent / f"_memory_bench.jsonl")
+    mem = ExperienceMemory(workdir.parent / "_memory_bench.jsonl")
     opt = ScriptOptimizer(script_adapter, judge, mem, exp,
                           rounds=rounds, candidates=candidates,
                           target_score=8.0, segments=4)

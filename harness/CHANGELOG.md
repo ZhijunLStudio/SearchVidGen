@@ -1,8 +1,8 @@
 # Changelog
 
-VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-48）。
-完整决策记录见 `.agents/notes/`（42 篇 Agent Note：41 implemented + 1 proposed），实验证据见
-`README.md` E1-E42，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-49）。
+完整决策记录见 `.agents/notes/`（43 篇 Agent Note：42 implemented + 1 proposed），实验证据见
+`README.md` E1-E43，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
@@ -20,6 +20,13 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
   钩子保证 finalize 前挂入，E40 真实 API 实证）
 - **裁判重复评测工具** `scripts/judge_repeatability.py`：同视频同口径
   重复评测（口径读 run 快照零硬编码，结果落事件溯源实验），E42 实证
+- **种子控制与确定性工具链（E43）**：`GenRequest.seed` 缝级字段 +
+  `kw.seed > req.seed > 构造参数` 逐调用覆盖（meta 记录有效种子）；
+  `scripts/compare_seed_runs.py`（跨 run 像素差）、
+  `scripts/seed_determinism_direct.py`（固定提示直测）、
+  `tasks/bench_seed.yaml`——配对种子 A/B 的完整工具链
+- **script 提供者 kw.system 覆盖**：变换任务（标题/归纳）自拥系统指令，
+  摆脱导演人格；meta.params["system"] 落盘可审计（E43）
 
 ### 修复
 
@@ -35,8 +42,14 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
 - **旧布局裁判推断标注强化（E42）**："judge.openai-compat（推断：旧布局
   未记录，裁判版本未知，跨期不可比）"——同名 adapter 跨代不可比的
   口径警示进 leaderboard/报告
+- **异构生成器参数格切换 OOM（E43）**：adapters_cache 双模型驻留显存
+  → `MiniMaxH3Local.dispose()`（资源归提供者）+ `bench.evict_generators()`
+  + cmd_bench 参数变化接线；兼解除 bench_api_local 异构矩阵潜在阻塞
+- **标题静默失败（E43）**：4 个 bench 格全部无标题——提供者导演人格
+  在温度 0/0.7/1.0 下压倒用户指令；kw.system 覆盖修复（温度 0 适配器
+  实测产出"橘猫窗台观雨"）
 
-### 实验证据（E31-E42）
+### 实验证据（E31-E43）
 
 bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
 自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
@@ -45,7 +58,9 @@ GPU 级下游效应诚实负结果（E38）、API 适配器 mock 协议验证（
 session title 全链路落地（E40，真实 API $0.000017/次）、静默行为审计
 （E41，6 处吞异常路径可见化/响亮化 + 真实 run 副本验证）、裁判重复
 评测方差分解（E42：本代裁判 sd=0 确定性，臂间方差全部来自生成；
-8-14 裁判与今日跨代不可比，实证 5.0→10.0）。
+8-14 裁判与今日跨代不可比，实证 5.0→10.0）、种子控制确定性
+（E43：同种子 MAE=0.0 像素级相同 vs 异种子 69.67——配对种子 A/B
+生成层无噪声，E38 样本量需求坍塌；连带修复 OOM 与标题静默失败）。
 
 ## v0.2.0（2026-08-16）
 
