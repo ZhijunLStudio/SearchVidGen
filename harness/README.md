@@ -452,6 +452,16 @@ E33 提升的"叙事缺乏起承转合"经验注入同 query 的 none 模式 run
   **因果确认需要更多样本**——列为后续实验
 - 附带：Makefile 一键健康门禁（make check = pytest+coverage+mypy+ruff）
 
+### E35：优化预算消融——(3,3) 是真实增益档而非微调（2026-08-16）
+`compare_script_optimize --rounds/--candidates` 参数化后扫描（N=3）：
+- 2×2（E26 基线）：off 7.94 → on 8.06（+0.12）
+- **3×3：off 7.81 → on 8.33（+0.52）**，18 次调用/3 试（early-stop
+  在 target 8.0 处截断，预算未满即停）——高预算 + 早停 = 增益与成本
+  兼得
+- story.yaml 默认预算升级为 3×3 / target 8.0
+结论修正 E26：**预算调参不是纯微调——(3,3) 档有显著增益，且
+early-stop 使成本可控**。
+
 ### E29：kill -9 故障演练——崩溃恢复实证 + 僵尸进程预检（2026-08-16）
 对真实生成中的 run 执行 SIGKILL 演练：
 - 事件溯源按设计工作：kill 后 events.jsonl 完好、投影一致、无 finalized

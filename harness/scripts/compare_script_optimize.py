@@ -44,10 +44,11 @@ def single_shot(script_adapter, judge, query, exp, workdir, trial):
     return verdict, 2   # 1 生成 + 1 裁判
 
 
-def optimized(script_adapter, judge, query, exp, workdir):
+def optimized(script_adapter, judge, query, exp, workdir, rounds=2, candidates=2):
     mem = ExperienceMemory(workdir.parent / f"_memory_bench.jsonl")
     opt = ScriptOptimizer(script_adapter, judge, mem, exp,
-                          rounds=2, candidates=2, target_score=8.0, segments=4)
+                          rounds=rounds, candidates=candidates,
+                          target_score=8.0, segments=4)
     best, history = opt.optimize(query, "", CRITERIA, workdir)
     best_rec = max(history, key=lambda r: r.get("score", 0))
     return best_rec, len(history)   # 调用数 = 生成+裁判总数
@@ -57,6 +58,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", required=True)
     ap.add_argument("--trials", type=int, default=3)
+    ap.add_argument("--rounds", type=int, default=2)
+    ap.add_argument("--candidates", type=int, default=2)
     ap.add_argument("--workdir", default="/tmp/script-opt-bench")
     args = ap.parse_args()
 
@@ -75,7 +78,8 @@ def main():
             if mode == "off":
                 verdict, calls = fn(script_adapter, judge, args.query, exp, workdir, trial)
             else:
-                verdict, calls = fn(script_adapter, judge, args.query, exp, workdir)
+                verdict, calls = fn(script_adapter, judge, args.query, exp, workdir,
+                                     rounds=args.rounds, candidates=args.candidates)
             rows.append({
                 "mode": mode, "trial": trial,
                 "score": verdict.get("score"), "passed": verdict.get("passed"),

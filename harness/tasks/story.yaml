@@ -31,9 +31,9 @@ judge:
 
 # ---- 剧本自主优化（多轮进化：候选生成→裁判评分→反馈入记忆→择优）----
 script_optimize:
-  rounds: 2
-  candidates: 2
-  target_score: 7.5
+  rounds: 3
+  candidates: 3
+  target_score: 8.0   # E35：(3,3) 增益 +0.52（vs 2×2 的 +0.12），early-stop 控成本
 
 # ---- 剧本评测（文本）：失败反馈进经验记忆，跨任务泛化 ----
 script_judge:
