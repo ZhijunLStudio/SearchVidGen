@@ -38,20 +38,36 @@ def _load_json(path: Path) -> Any:
         return None
 
 
-def _latest_finished_run(base_dir: Path, task_name: str) -> Optional[Dict[str, Any]]:
+def _latest_finished_run(base_dir: Path, task_name: str,
+                        match_config: Any = None) -> Optional[Dict[str, Any]]:
+    """最新完成 run；match_config 给定时优先返回配置快照与之一致的 run
+    （bench 格的配置含矩阵覆写，不是 check 任务的回归对象；--label 的
+    普通 run 配置一致，仍算回归对象）。"""
+    import yaml
     task_dir = base_dir / task_name
     if not task_dir.exists():
         return None
     best: Optional[Dict[str, Any]] = None
+    best_matching: Optional[Dict[str, Any]] = None
     for run_dir in task_dir.iterdir():
         if not run_dir.is_dir():
             continue
         m = _load_json(run_dir / "manifest.json")
         if not isinstance(m, dict) or not m.get("finished_at"):  # type: ignore[union-attr]
             continue
+        cand = {"run_id": run_dir.name, "dir": run_dir, "manifest": m}
         if best is None or (m.get("finished_at") or "") > (best["manifest"].get("finished_at") or ""):  # type: ignore[union-attr]
-            best = {"run_id": run_dir.name, "dir": run_dir, "manifest": m}
-    return best
+            best = cand
+        if match_config is not None:
+            try:
+                snap = yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
+            except Exception:
+                snap = None
+            if snap == match_config and (
+                    best_matching is None or (m.get("finished_at") or "") >
+                    (best_matching["manifest"].get("finished_at") or "")):  # type: ignore[union-attr]
+                best_matching = cand
+    return best_matching or best
 
 
 def _key_scores(run_dir: Path) -> Dict[str, Any]:
@@ -99,7 +115,12 @@ def status(base_dir: Path, spec_path: Path) -> List[Dict[str, Any]]:
                          or {}).get("task_name", task_path.stem)
         except Exception:
             task_name = task_path.stem
-        run = _latest_finished_run(base_dir, task_name)
+        try:
+            import yaml
+            task_cfg = yaml.safe_load(task_path.read_text(encoding="utf-8"))
+        except Exception:
+            task_cfg = None
+        run = _latest_finished_run(base_dir, task_name, match_config=task_cfg)
         row: Dict[str, Any] = {
             "task_file": task_file, "task_name": task_name,
             "run_id": run["run_id"] if run else None,
