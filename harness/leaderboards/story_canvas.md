@@ -1,6 +1,6 @@
 # Leaderboard: story_canvas
 
-更新：2026-08-16T14:33:18.694222　run 数：5
+更新：2026-08-16T15:37:39.526237　run 数：5
 
 > ⚠️ 本表混用裁判 ['judge.deepseek-text', 'judge.openai-compat']：评分尺度不可直接对比（E24），请参考 calibration/ 校准数据。
 

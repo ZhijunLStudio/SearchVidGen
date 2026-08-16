@@ -1,6 +1,6 @@
 # Leaderboard: story_ref2va_check
 
-更新：2026-08-16T13:13:31.671209　run 数：1
+更新：2026-08-16T15:37:39.527966　run 数：1
 
 > ⚠️ 本表混用裁判 ['judge.deepseek-text', 'judge.openai-compat']：评分尺度不可直接对比（E24），请参考 calibration/ 校准数据。
 

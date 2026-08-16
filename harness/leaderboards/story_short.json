@@ -1,6 +1,6 @@
 {
   "task": "story_short",
-  "updated_at": "2026-08-16T08:38:28.905824",
+  "updated_at": "2026-08-16T15:37:39.530970",
   "run_count": 6,
   "runs": [
     {
@@ -8,6 +8,9 @@
       "bench_cell": null,
       "chain_mode": null,
       "models": [],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
+      ],
       "scores": {
         "画面质量": 5.0,
         "音效场景相符": 8.0,
@@ -23,6 +26,12 @@
         },
         "audio_verify": {}
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "画面质量": 5.0,
+        "音效场景相符": 8.0,
+        "跨段一致性": 10.0
+      },
       "passed_rate": 0.5,
       "total_cost_usd": 0.0,
       "total_elapsed_s": 4854.4,
@@ -36,6 +45,9 @@
       "chain_mode": null,
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -56,6 +68,14 @@
         },
         "audio_verify": {}
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 1.0
+      },
       "passed_rate": 0.73,
       "total_cost_usd": 0.00017549000000000002,
       "total_elapsed_s": 6164.706835508347,
@@ -69,6 +89,9 @@
       "chain_mode": null,
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -89,6 +112,14 @@
         },
         "audio_verify": {}
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 10.0
+      },
       "passed_rate": 0.91,
       "total_cost_usd": 0.00019747000000000002,
       "total_elapsed_s": 6010.11067533493,
@@ -102,6 +133,9 @@
       "chain_mode": null,
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -122,6 +156,14 @@
         },
         "audio_verify": {}
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 8.33,
+        "叙事推进": 10.0
+      },
       "passed_rate": 0.55,
       "total_cost_usd": 0.00014651000000000003,
       "total_elapsed_s": 13043.772198438644,
@@ -135,6 +177,9 @@
       "chain_mode": null,
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
       ],
       "scores": {
         "叙事完整": 9.0,
@@ -163,6 +208,17 @@
         },
         "audio_verify": {}
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "叙事完整": 9.0,
+        "旁白自然": 9.0,
+        "可生成性": 8.0,
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 6.0,
+        "叙事推进": 7.33
+      },
       "passed_rate": 0.42,
       "total_cost_usd": 0.00017080000000000003,
       "total_elapsed_s": 4618.747319459915,
@@ -176,6 +232,9 @@
       "chain_mode": null,
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat（推断：旧布局未记录）"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -196,6 +255,14 @@
           "叙事推进": 10.0
         },
         "audio_verify": {}
+      },
+      "calibrated": false,
+      "scores_calibrated": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 7.67,
+        "叙事推进": 10.0
       },
       "passed_rate": 0.62,
       "total_cost_usd": 0.00032886000000000005,

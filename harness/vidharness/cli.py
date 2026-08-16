@@ -282,6 +282,14 @@ def cmd_bench(args):
         print(f"  完成: {final}")
 
 
+
+
+def cmd_costs(args):
+    from .core.costs import build_cost_report, render_cost_table
+    data = build_cost_report(Path(args.output), args.gpu_price)
+    print(render_cost_table(data))
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="vidharness", description="视频生成流水线 Harness")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -345,6 +353,11 @@ def main(argv=None):
     pmc.add_argument("--output", default="experiments", help="实验输出根目录")
     pmc.add_argument("--threshold", type=int, default=2, help="提升阈值")
     pmc.set_defaults(fn=cmd_memory_consolidate)
+
+    pc = sub.add_parser("costs", help="跨任务成本报表（API/GPU 卡时/估算总计）")
+    pc.add_argument("--output", default="experiments", help="实验输出根目录")
+    pc.add_argument("--gpu-price", type=float, default=1.2, help="GPU 单价 USD/卡时")
+    pc.set_defaults(fn=cmd_costs)
 
     prp = sub.add_parser("report", help="生成实验对比报告（--run 生成单 run 详情页）")
     prp.add_argument("task", help="任务名（如 story_short）")

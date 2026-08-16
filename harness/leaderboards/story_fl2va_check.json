@@ -1,6 +1,6 @@
 {
   "task": "story_fl2va_check",
-  "updated_at": "2026-08-16T11:55:26.854501",
+  "updated_at": "2026-08-16T15:37:39.527420",
   "run_count": 2,
   "runs": [
     {
@@ -9,6 +9,10 @@
       "chain_mode": "hard",
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.deepseek-text",
+        "judge.openai-compat"
       ],
       "scores": {
         "叙事完整": 6.0,
@@ -30,6 +34,14 @@
           "跨段一致性": 10.0
         }
       },
+      "calibrated": false,
+      "scores_calibrated": {
+        "叙事完整": 6.0,
+        "可生成性": 8.0,
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "跨段一致性": 10.0
+      },
       "passed_rate": 1.0,
       "total_cost_usd": 0.00022288000000000003,
       "total_elapsed_s": 1257.5427978038788,
@@ -43,6 +55,10 @@
       "chain_mode": "hard",
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.deepseek-text",
+        "judge.openai-compat"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -60,6 +76,13 @@
           "跨段一致性": 10.0,
           "叙事推进": 1.0
         }
+      },
+      "calibrated": false,
+      "scores_calibrated": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 1.0
       },
       "passed_rate": 0.4,
       "total_cost_usd": 0.00040075,

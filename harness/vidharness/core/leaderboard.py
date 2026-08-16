@@ -113,8 +113,9 @@ def export(base_dir: Path, task: str, out_dir: Path, calibrate: bool = False) ->
 def export_all(base_dir: Path, out_dir: Path, calibrate: bool = False) -> Dict[str, Any]:
     """导出 experiments 下所有任务的基线并渲染 index.html（公开页面雏形）。"""
     exported = {}
+    # 注意：d.iterdir() 返回全路径，r 已是 run 目录本身（勿再 d / r）
     tasks = sorted(d.name for d in Path(base_dir).iterdir()
-                   if d.is_dir() and any((d / r / "manifest.json").exists()
+                   if d.is_dir() and any((r / "manifest.json").exists()
                                          for r in d.iterdir() if r.is_dir()))
     for task in tasks:
         _, _, diff = export(base_dir, task, out_dir, calibrate=calibrate)

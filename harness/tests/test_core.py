@@ -2158,3 +2158,33 @@ class TestMemoryConsolidate:
         stats = mem.consolidate(lambda c: "叙事缺乏起承转合")
         assert stats["merged_into_existing"] == 1
         assert mem.experience_lines().count("叙事缺乏起承转合") == 1
+
+
+class TestCostsReport:
+    def test_build_cost_report(self, tmp_path):
+        from vidharness.core.costs import build_cost_report
+        exp = _build_exp(tmp_path)                 # task t：cost 0.5、无 GPU
+        exp.finalize()
+        exp2 = Experiment(task="t2", base_dir=tmp_path, run_id="r2")
+        (Path(tmp_path) / "v.mp4").write_bytes(b"fake")
+        exp2.save_artifact("segments", Artifact(
+            kind="video", path=Path(tmp_path) / "v.mp4",
+            meta=ArtifactMeta(adapter="generator.cost-local", elapsed_s=3600.0)),
+            name="s1")
+        exp2.finalize()
+        data = build_cost_report(tmp_path, gpu_price_usd_per_hour=2.0)
+        by_task = {r["task"]: r for r in data["tasks"]}
+        assert by_task["t"]["api_cost_usd"] == 0.5
+        assert by_task["t2"]["gpu_hours"] == 1.0
+        assert by_task["t2"]["gpu_cost_usd_est"] == 2.0   # 价格参数生效
+        assert data["totals"]["total_usd_est"] == 2.5
+
+    def test_task_scan_with_relative_base(self, tmp_path, monkeypatch):
+        """相对路径基座扫描回归：d.iterdir() 返回全路径，
+        双重拼接（d / r）会让扫描静默为空（生产 bug 的教训）。"""
+        from vidharness.core.costs import build_cost_report
+        exp = _build_exp(tmp_path)
+        exp.finalize()
+        monkeypatch.chdir(tmp_path)
+        data = build_cost_report(Path("."))
+        assert [r["task"] for r in data["tasks"]] == ["t"]

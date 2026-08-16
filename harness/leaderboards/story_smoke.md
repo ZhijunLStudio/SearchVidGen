@@ -1,6 +1,6 @@
 # Leaderboard: story_smoke
 
-更新：2026-08-16T15:28:47.959768　run 数：4
+更新：2026-08-16T15:37:39.532323　run 数：4
 
 > ⚠️ 本表混用裁判 ['judge.deepseek-text', 'judge.openai-compat']：评分尺度不可直接对比（E24），请参考 calibration/ 校准数据。
 
