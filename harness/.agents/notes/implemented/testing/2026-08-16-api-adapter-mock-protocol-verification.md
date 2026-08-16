@@ -32,5 +32,9 @@ Status: implemented
 
 - 四个适配器全部具备可执行验证（H3 本地=真机 E 系列、API=mock
   协议测试、裁判=真 API 冒烟+校准、script=真 API 量化）。
+- **流水线级验证（同日，E39）**：mock API 后端跑完整 director 流程
+  （真实剧本+真实裁判），8 秒完成、finalize 不变量通过、成本口径
+  正确（$0.67）、段级裁判正确识别 mock 蓝屏为内容不符（1.0）——
+  "API 对比一键可跑"的全部代码路径已验证，仅真实端点未接入。
 - 真实 key 到位后：跑 `vh bench tasks/bench_api_local.yaml`，
   若响应格式与 mock 假设有差异，错误会集中在解析点（fail loud）。
