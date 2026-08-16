@@ -1,0 +1,48 @@
+# 最小本地冒烟任务：2 段 × 5s × 20 步（完整管线但降档时长，快速验证基建）
+# 用途：新基建（事件溯源/不变量/快照/详情页）的首次真实 GPU 端到端验证
+task_name: story_smoke
+segments: 2
+
+pipeline:
+  script:
+    adapter: script.deepseek-v4-flash
+    params: {model: deepseek-chat, temperature: 0.9}
+  generator:
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "4,6"
+      variant: t2va
+      steps: 20
+      seed: 20260816
+  context:
+    chain_mode: none
+    anchor_refs: []
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 2
+    disable_thinking: true
+
+script_judge:
+  - {name: 叙事完整, question: "分镜是否构成完整有起伏的故事？", weight: 1.0, min_score: 6}
+  - {name: 可生成性, question: "画面指令是否具体可执行？", weight: 1.0, min_score: 6}
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令的主体/动作/镜头？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（畸形/闪变/崩坏）？", weight: 1.0, min_score: 6}
+
+segment_retry: {max_attempts: 1, inject_feedback: false}
+
+cross_judge:
+  - {name: 跨段一致性, question: "两帧人物/场景是否自然衔接？", weight: 1.0, min_score: 6}
+
+memory:
+  path: _memory.jsonl
+  promote_threshold: 2
+
+cost:
+  gpu_price_usd_per_hour: 1.2

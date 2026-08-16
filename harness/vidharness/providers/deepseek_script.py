@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any, Dict
 
 from openai import OpenAI
 
-from ..seams import Artifact, ArtifactMeta
+from ..seams import (Artifact, ArtifactMeta,
+                     build_script_prompt, parse_script_json)
 from ..core.registry import register
 
 
@@ -56,25 +56,16 @@ class DeepSeekScriptGenerator:
         t0 = _t.time()
         workdir.mkdir(parents=True, exist_ok=True)
         # 通用提示组装：协议契约 + 用户目标(brief) + 环境经验，无领域模板
-        segments = template.get("segments", 4)
+        # （提示契约由 script 缝的 build_script_prompt 拥有，见 seams/script.py）
         system = (
             "你是资深影视导演。把用户的目标拆成 8-15 秒一镜的分镜计划，"
             "每镜含画面指令(video_prompt，中文50-90字：镜头运动/主体动作/环境/情绪)"
             "与旁白(narration)。画面指令末尾写音频要求（环境音与旁白朗读）。"
             "各镜之间机位/景别要有变化。只输出 JSON。"
         )
-        parts = [f"目标：{query}（共 {segments} 个分镜）"]
+        user = build_script_prompt(query, template)
         brief = template.get("brief")
-        if brief:
-            parts.append(f"补充要求：{brief}")
         experience = template.get("experience", [])
-        if experience:
-            parts.append("经验教训（务必遵守）：\n" + "\n".join(f"- {e}" for e in experience))
-        parts.append(
-            "输出 JSON（不要其他文字）：\n"
-            '{"segments": [{"video_prompt": "...", "narration": "...", "duration": 8}]}'
-        )
-        user = "\n\n".join(parts)
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system},
@@ -83,7 +74,7 @@ class DeepSeekScriptGenerator:
             max_tokens=self.max_tokens,
         )
         content = resp.choices[0].message.content
-        data = self._parse_json(content, template)
+        data = parse_script_json(content)
         path = workdir / "script.json"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         meta = ArtifactMeta(
@@ -96,22 +87,6 @@ class DeepSeekScriptGenerator:
             cost_usd=_estimate_cost(resp.usage.prompt_tokens, resp.usage.completion_tokens, self.model),
         )
         return Artifact(kind="script", path=path, meta=meta, payload=data)
-
-    @staticmethod
-    def _parse_json(content: str, template: Dict[str, Any]) -> Dict[str, Any]:
-        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
-        raw = m.group(1) if m else content
-        try:
-            return json.loads(raw)
-        except Exception:
-            # 兜底：截取首尾花括号再试
-            m2 = re.search(r"\{[\s\S]*\}", raw)
-            if m2:
-                try:
-                    return json.loads(m2.group(0))
-                except Exception:
-                    pass
-            return {"error": "JSON 解析失败", "raw": content[:500]}
 
 
 def _estimate_cost(prompt_tokens: int, completion_tokens: int, model: str) -> float:

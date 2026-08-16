@@ -70,9 +70,10 @@ harness/vidharness/
 8. **聚合唯一正源 + leaderboard 基线**：report.collect() 是唯一聚合面
    （全局/分 stage 分数、通过率、模型、成本分解）；`vh leaderboard <task>`
    导出可入库基线（JSON+MD+增量 diff），`vh doctor --all` 全量体检。
-9. **孪生适配器纪律**：judge 缝双实现（vLLM VLM 媒体裁判 + DeepSeek 文本裁判），
-   模态声明可强制——媒体评测配到 text-only 裁判在第一次调用即响亮失败，
-   抽帧失败记错误记录而不是假装评测。
+9. **孪生适配器纪律**：judge 缝双实现（vLLM VLM 媒体裁判 + DeepSeek 文本裁判）、
+   script 缝双实现（DeepSeek 官方 + 通用 OpenAI 兼容端点），提示/解析契约
+   归 Service Definition 所有；模态声明可强制——媒体评测配到 text-only
+   裁判在第一次调用即响亮失败，抽帧失败记错误记录而不是假装评测。
 
 ## 决策记忆（Agent Notes）
 

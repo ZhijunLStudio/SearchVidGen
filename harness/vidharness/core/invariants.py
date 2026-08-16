@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .experiment import replay_events, replay_eval_records
+from .experiment import _read_events, replay_events, replay_eval_records
 
 _EPS = 1e-6
 
@@ -102,6 +102,15 @@ def check_experiment(root: Path) -> List[str]:
     if events.exists():
         proj = replay_events(events)
         if proj is not None:
+            raw_events = _read_events(events)
+            # 阶段生命周期配对：已 finalize 的 run，每个 stage.started 必须有 finished
+            if proj.get("finished_at"):
+                started = {ev.get("stage") for ev in raw_events
+                           if ev.get("type") == "stage.started"}
+                finished = {ev.get("stage") for ev in raw_events
+                            if ev.get("type") == "stage.finished"}
+                for s in sorted(started - finished):
+                    v.append(f"阶段 '{s}' 有 stage.started 但无 stage.finished")
             for stage, arts in proj.get("stages", {}).items():
                 marts = manifest.get("stages", {}).get(stage, [])
                 if len(arts) != len(marts):

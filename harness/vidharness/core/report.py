@@ -232,6 +232,7 @@ def render_run_html(run_dir: Path, out: Path) -> Path:
     events_file = run_dir / "events.jsonl"
     event_rows = ""
     event_note = ""
+    timeline_rows = ""
     if events_file.exists():
         events = [json.loads(l) for l in events_file.read_text(encoding="utf-8").splitlines()
                   if l.strip()]
@@ -239,6 +240,17 @@ def render_run_html(run_dir: Path, out: Path) -> Path:
         for ev in events[-20:]:
             event_rows += (f"<tr><td>{esc(str(ev.get('ts', '')))}</td>"
                            f"<td>{esc(_event_summary(ev))}</td></tr>")
+        # 阶段时间线：stage.started/finished 配对算时长
+        started_ts: Dict[str, Any] = {}
+        for ev in events:
+            if ev.get("type") == "stage.started":
+                started_ts[ev["stage"]] = ev.get("ts", 0)
+            elif ev.get("type") == "stage.finished" and ev.get("stage") in started_ts:
+                dur = ev.get("ts", 0) - started_ts.pop(ev["stage"])
+                timeline_rows += (f"<tr><td>{esc(ev['stage'])}</td>"
+                                  f"<td>{dur:.1f}s</td></tr>")
+        for s in started_ts:
+            timeline_rows += f"<tr><td>{esc(s)}</td><td>（未结束：中断/运行中）</td></tr>"
     else:
         event_note = "无事件流（2026-08-16 前旧 run）"
 
@@ -260,6 +272,8 @@ pre {{ background: #fafafa; padding: 8px; border: 1px solid #eee; overflow-x: au
 {art_rows}</table>
 <h3>评测明细</h3>{eval_blocks or '<p>（无评测记录）</p>'}
 <h3>事件流</h3><p>{esc(event_note)}</p>
+<h3>阶段时间线</h3>
+<table><tr><th>阶段</th><th>时长</th></tr>{timeline_rows or '<tr><td colspan="2">（无记录）</td></tr>'}</table>
 <table><tr><th>ts</th><th>事件</th></tr>{event_rows}</table>
 </body></html>"""
     out.write_text(html, encoding="utf-8")

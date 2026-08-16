@@ -180,6 +180,14 @@ class Experiment:
         self.manifest.setdefault("retries", {})
         self.manifest["retries"][stage] = self.manifest["retries"].get(stage, 0) + 1
 
+    def stage_started(self, stage: str) -> None:
+        """阶段开始事件（进度溯源；不参与 manifest 投影）。"""
+        self._emit("stage.started", stage=stage)
+
+    def stage_finished(self, stage: str) -> None:
+        """阶段结束事件（与 stage.started 配对；不变量校验配对）。"""
+        self._emit("stage.finished", stage=stage)
+
     # ---- 产物存取 ----
     def save_artifact(self, stage: str, artifact: Artifact, name: Optional[str] = None) -> Path:
         """把产物落进 artifacts/<stage>/ 并记录 manifest。"""

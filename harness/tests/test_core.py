@@ -467,6 +467,7 @@ class _FakeScript:
     def __init__(self):
         pass
     def generate(self, query, template, workdir, **kw):
+        workdir.mkdir(parents=True, exist_ok=True)
         payload = {"segments": [{"video_prompt": "p", "narration": "n", "duration": 5}]}
         path = Path(workdir) / "s.json"
         path.write_text(json.dumps(payload))
@@ -481,8 +482,11 @@ class _FakeJudge:
     def __init__(self):
         pass
     def judge(self, media, criteria, workdir, **kw):
-        return Artifact(kind="scores", path=Path(workdir) / "j.json",
-                        meta=ArtifactMeta(),
+        workdir.mkdir(parents=True, exist_ok=True)
+        path = Path(workdir) / "j.json"
+        path.write_text(json.dumps({"scores": {}, "feedback": "pass"}), encoding="utf-8")
+        return Artifact(kind="scores", path=path,
+                        meta=ArtifactMeta(adapter=self.name),
                         payload={"scores": {}, "feedback": "pass"})
 
 
@@ -495,7 +499,10 @@ class _TextOnlyGen:
     def __init__(self):
         pass
     def generate(self, req, workdir, **kw):
-        return Artifact(kind="video", path=Path(workdir) / "v.mp4",
+        workdir.mkdir(parents=True, exist_ok=True)
+        p = Path(workdir) / "v.mp4"
+        p.write_bytes(b"fake")
+        return Artifact(kind="video", path=p,
                         meta=ArtifactMeta(adapter=self.name))
 
 
@@ -874,7 +881,8 @@ class TestSeamConformance:
     BUILTINS = {
         "generator.fallback", "generator.minimax-h3-api", "generator.minimax-h3-local",
         "judge.openai-compat", "judge.deepseek-text",
-        "script.deepseek-v4-flash", "transcribe.sensevoice-small",
+        "script.deepseek-v4-flash", "script.openai-compat",
+        "transcribe.sensevoice-small",
     }
 
     def test_registered_providers_conform_to_seam(self):
@@ -1107,3 +1115,133 @@ class TestCrossConsistencyFrameFailure:
             [Path("a.mp4"), Path("b.mp4")], {"segments": []})
         assert result["checked"] is True
         assert any("error" in r and "抽帧失败" in r["error"] for r in result["records"])
+
+
+class TestStageLifecycle:
+    def test_stage_events_pair_and_invariants_pass(self, tmp_path, monkeypatch):
+        from vidharness.consumers.segment_director import SegmentDirector
+        # 抽帧/总装 monkeypatch（测试环境不依赖 ffmpeg 与真实媒体）
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        monkeypatch.setattr(SegmentDirector, "stage_assemble",
+                            lambda self, videos, script: Path(tmp_path) / "final.mp4")
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        final = director.run("测试故事")
+        assert final == Path(tmp_path) / "final.mp4"
+        types = _event_types(director.exp)
+        assert types.count("stage.started") == 4        # script/segments/cross/assemble
+        assert types.count("stage.finished") == 4
+        from vidharness.core.invariants import check_experiment
+        assert check_experiment(director.exp.root) == []
+
+    def test_unpaired_stage_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        exp.stage_started("script")
+        exp.stage_finished("script")
+        exp.stage_started("segments")                   # 故意不 finish
+        with pytest.raises(RuntimeError, match="不变量"):
+            exp.finalize()                               # 收尾时应拒绝：配对不变量
+        from vidharness.core.invariants import check_experiment
+        v = check_experiment(exp.root)
+        assert any("stage.started 但无 stage.finished" in x for x in v)
+
+
+class TestScriptSeamContract:
+    def test_build_script_prompt(self):
+        from vidharness.seams import build_script_prompt
+        p = build_script_prompt("目标", {"segments": 3, "brief": "短", "experience": ["教训1"]})
+        assert "共 3 个分镜" in p and "短" in p and "教训1" in p and "输出 JSON" in p
+
+    def test_parse_script_json_variants(self):
+        from vidharness.seams import parse_script_json
+        d = parse_script_json('```json\n{"segments": []}\n```')
+        assert d == {"segments": []}
+        d = parse_script_json('前缀 {"segments": []} 后缀')
+        assert d == {"segments": []}
+        d = parse_script_json("完全不是 JSON")
+        assert "error" in d
+
+
+class TestOpenAICompatScript:
+    """script 缝的第二实现（孪生适配器）：通用 OpenAI 兼容端点。"""
+
+    def _fake(self, monkeypatch, raw):
+        from types import SimpleNamespace
+        captured = {}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                captured["init"] = kw
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(content=raw)
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="m",
+                                       usage=SimpleNamespace(
+                                           prompt_tokens=100, completion_tokens=50))
+
+        monkeypatch.setattr("vidharness.providers.script_openai_compat.OpenAI", FakeClient)
+        return captured
+
+    def test_generate_contract_and_unpriced(self, tmp_path, monkeypatch):
+        raw = '{"segments": [{"video_prompt": "p", "narration": "n", "duration": 8}]}'
+        captured = self._fake(monkeypatch, raw)
+        gen = instantiate("script.openai-compat", {"base_url": "http://x/v1", "model": "m"})
+        art = gen.generate("目标", {"segments": 3, "brief": "短", "experience": ["教训1"]},
+                           tmp_path)
+        assert art.payload["segments"][0]["narration"] == "n"
+        assert art.meta.cost_usd == 0.0 and art.meta.params["billing"] == "unpriced"
+        prompt = captured["create"]["messages"][1]["content"]
+        assert "共 3 个分镜" in prompt and "短" in prompt and "教训1" in prompt
+
+    def test_priced_billing(self, tmp_path, monkeypatch):
+        self._fake(monkeypatch, '{"segments": []}')
+        gen = instantiate("script.openai-compat", {
+            "base_url": "http://x/v1", "model": "m",
+            "price_in_usd_per_1m": 0.1, "price_out_usd_per_1m": 0.2})
+        art = gen.generate("q", {}, tmp_path)
+        expected = 100 / 1e6 * 0.1 + 50 / 1e6 * 0.2
+        assert abs(art.meta.cost_usd - expected) < 1e-9
+        assert art.meta.params["billing"] == "priced"
+
+
+class TestDeepSeekScriptSeamRefactor:
+    def test_generate_uses_seam_contract(self, tmp_path, monkeypatch):
+        """deepseek_script 重构后仍走 seam 的提示/解析契约（行为不回归）。"""
+        from types import SimpleNamespace
+        captured = {}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(
+                    content='```json\n{"segments": [{"video_prompt": "p", '
+                            '"narration": "n", "duration": 8}]}\n```')
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="deepseek-chat",
+                                       usage=SimpleNamespace(
+                                           prompt_tokens=100, completion_tokens=50))
+
+        monkeypatch.setattr("vidharness.providers.deepseek_script.OpenAI", FakeClient)
+        gen = instantiate("script.deepseek-v4-flash", {"api_key": "k"})
+        art = gen.generate("目标", {"segments": 2}, tmp_path)
+        assert art.payload["segments"][0]["narration"] == "n"
+        assert art.meta.cost_usd > 0
+        prompt = captured["create"]["messages"][1]["content"]
+        assert "共 2 个分镜" in prompt
