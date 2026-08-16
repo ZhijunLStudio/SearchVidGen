@@ -98,13 +98,17 @@ def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, An
 
 
 def run_judge(judge: Any, media, criteria: List[JudgeCriteria],
-              workdir) -> Dict[str, Any]:
+              workdir, exp=None) -> Dict[str, Any]:
     """统一评测调用：传完整规格（含权重/阈值/别名），回来统一 finalize。
 
     所有消费者（judge_loop / script / cross_consistency / optimizer）
     都经此结算，保证评测策略只在一处生效。
+    传 exp 时裁判原始输出作为产物存档（artifacts/judge/，经事件流，
+    对齐"模型可见 ⟺ 日志"——每次裁判调用可重建）。
     """
     art = judge.judge(media=media, criteria=criteria_to_spec(criteria), workdir=workdir)
+    if exp is not None:
+        exp.save_artifact("judge", art)
     payload = art.payload or {}
     return finalize_verdict(payload.get("scores", {}), payload.get("feedback", ""), criteria)
 
@@ -134,9 +138,7 @@ def run_with_judge(
 
     for attempt in range(1, retry.max_attempts + 1):
         if attempt > 1:
-            exp.manifest.setdefault("retries", {})
-            exp.manifest["retries"].setdefault(stage, 0)
-            exp.manifest["retries"][stage] += 1
+            exp.record_retry(stage)
 
         # 1) 生成
         inputs = dict(generate_inputs)
@@ -156,7 +158,8 @@ def run_with_judge(
         media = media_collector(last)
         if not media:
             return last, history
-        verdict = run_judge(judge_obj, media, criteria, exp.eval_dir)
+        verdict = run_judge(judge_obj, media, criteria,
+                            exp.artifacts_dir / "judge", exp=exp)
         record = {
             "attempt": attempt,
             "artifact": str(last.path),

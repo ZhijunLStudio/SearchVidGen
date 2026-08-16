@@ -19,8 +19,28 @@ from vidharness.consumers.judge_loop import (parse_judge_output, parse_scores,  
                                              finalize_verdict, run_judge)
 from vidharness.seams import (JudgeCriteria, RetryPolicy, Artifact, ArtifactMeta,  # noqa: E402
                               criteria_to_spec, spec_to_criteria)
-from vidharness.core.experiment import Experiment  # noqa: E402
+from vidharness.core.experiment import Experiment, replay_events  # noqa: E402
+from vidharness.core.invariants import check_experiment  # noqa: E402
 from vidharness.core.config import validate_task, ConfigError  # noqa: E402
+
+
+def _build_exp(tmp_path: Path) -> Experiment:
+    """构造一个有事件流、产物、评测、重试、配置快照的最小实验。"""
+    exp = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+    exp.bind_query("q")
+    exp.snapshot_config({"task_name": "t"})
+    (Path(tmp_path) / "v.mp4").write_bytes(b"fake")
+    exp.save_artifact("segments", Artifact(
+        kind="video", path=Path(tmp_path) / "v.mp4",
+        meta=ArtifactMeta(adapter="x", elapsed_s=2.0, cost_usd=0.5)), name="seg01")
+    exp.save_eval("segments", [{"attempt": 1, "score": 8.0}])
+    exp.record_retry("segments")
+    return exp
+
+
+def _event_types(exp: Experiment):
+    return [json.loads(l)["type"]
+            for l in exp.events_path.read_text(encoding="utf-8").splitlines()]
 
 
 class TestRegistry:
@@ -545,3 +565,151 @@ class TestSegmentDirectorCapabilities:
         d = SegmentDirector(exp, cfg)
         assert d.generator.capabilities["audio"] is True   # 并集能力
         assert exp.manifest["generator_capabilities"]["audio"] is True
+
+
+class TestEventSourcing:
+    def test_events_emitted(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        types = _event_types(exp)
+        assert types[0] == "run.created"
+        for t in ("query.bound", "config.snapshotted", "artifact.saved",
+                  "eval.saved", "retry"):
+            assert t in types, types
+
+    def test_crash_recovery_rebuilds_manifest(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        (exp.root / "manifest.json").unlink()   # 模拟崩溃丢失投影
+        exp2 = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        assert exp2.events_complete is True
+        assert exp2.manifest["query"] == "q"
+        assert exp2.manifest["total_cost_usd"] == 0.5
+        assert exp2.manifest["retries"] == {"segments": 1}
+        assert len(exp2.manifest["stages"]["segments"]) == 1
+
+    def test_legacy_run_keeps_manifest_authority(self, tmp_path):
+        exp = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        exp.snapshot_config({"task_name": "t"})   # 先把 manifest 落盘
+        (exp.root / "events.jsonl").unlink()      # 模拟老 run：无事件流
+        exp2 = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        assert exp2.events_complete is False
+        assert exp2.manifest["task"] == "t"
+
+    def test_replay_matches_manifest_after_finalize(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        exp.finalize()                          # finalize 内含不变量校验
+        proj = replay_events(exp.events_path)
+        m = json.loads((exp.root / "manifest.json").read_text(encoding="utf-8"))
+        assert proj["total_cost_usd"] == m["total_cost_usd"]
+        assert proj["total_elapsed_s"] == m["total_elapsed_s"]
+        assert proj["retries"] == m["retries"]
+        assert list(proj["stages"]) == list(m["stages"])
+        assert len(proj["stages"]["segments"]) == len(m["stages"]["segments"])
+
+
+class TestInvariants:
+    def test_healthy_run_passes(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        exp.finalize()
+        assert check_experiment(exp.root) == []
+
+    def test_cost_mismatch_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        m = json.loads((exp.root / "manifest.json").read_text(encoding="utf-8"))
+        m["total_cost_usd"] = 999.0
+        (exp.root / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        v = check_experiment(exp.root)
+        assert any("total_cost_usd" in x for x in v)
+
+    def test_missing_artifact_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        art = exp.artifacts_dir / "segments" / "seg01.mp4"
+        art.unlink()
+        v = check_experiment(exp.root)
+        assert any("产物文件缺失" in x for x in v)
+
+    def test_tampered_config_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        cfg = exp.root / "config.yaml"
+        cfg.write_text(cfg.read_text(encoding="utf-8") + "# 篡改\n", encoding="utf-8")
+        v = check_experiment(exp.root)
+        assert any("配置快照被修改" in x for x in v)
+
+    def test_bad_eval_file_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        (exp.eval_dir / "bad.json").write_text("not json", encoding="utf-8")
+        v = check_experiment(exp.root)
+        assert any("无法解析" in x for x in v)
+
+    def test_event_divergence_detected(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        # 手写一条与 manifest 不一致的事件（多出一件高价产物）
+        with open(exp.events_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": 0, "type": "artifact.saved", "v": 1,
+                                "stage": "segments",
+                                "entry": {"kind": "video", "path": "/x.mp4",
+                                          "meta": {"cost_usd": 5.0, "elapsed_s": 0.0}}},
+                               ensure_ascii=False) + "\n")
+        v = check_experiment(exp.root)
+        assert any("事件重放" in x for x in v)
+
+
+class TestParamSchema:
+    def test_schema_type_choices_required(self):
+        @register("generator.schema-test")
+        class S:
+            name = "generator.schema-test"
+            capabilities = {"max_duration_s": 15, "audio": True, "refs": 9,
+                            "first_last_frame": True, "resolution": "768p",
+                            "backend": "local"}
+            param_schema = {
+                "model_path": {"type": "path", "required": True, "help": "权重目录"},
+                "steps": {"type": "int", "default": None},
+                "variant": {"type": "str", "choices": ["t2va", "fl2va"], "default": "t2va"},
+            }
+            def __init__(self, model_path, steps=None, variant="t2va"):
+                self.model_path = model_path
+                self.steps = steps
+
+        with pytest.raises(RuntimeError, match="缺少必需参数 'model_path'"):
+            instantiate("generator.schema-test", {})
+        with pytest.raises(RuntimeError, match="类型应为 int"):
+            instantiate("generator.schema-test", {"model_path": "/x", "steps": "30"})
+        with pytest.raises(RuntimeError, match="只允许"):
+            instantiate("generator.schema-test", {"model_path": "/x", "variant": "fl2va2"})
+        with pytest.raises(RuntimeError, match="不接受参数"):
+            instantiate("generator.schema-test", {"model_path": "/x", "modelpath": "/y"})
+        o = instantiate("generator.schema-test", {"model_path": "/x", "steps": 30})
+        assert o.steps == 30
+
+    def test_builtin_schemas_match_constructors(self):
+        """声明目录必须与构造签名一致（防 drift 的元测试）。"""
+        import inspect
+        from vidharness.core.registry import load_builtin_adapters, list_adapters, get
+        load_builtin_adapters()
+        checked = 0
+        for name in list_adapters():
+            cls = get(name)
+            schema = getattr(cls, "param_schema", None)
+            if schema is None:
+                continue    # 未声明目录的适配器走签名内省兜底
+            sig = inspect.signature(cls.__init__)
+            ctor = {p for p in sig.parameters if p != "self"}
+            assert set(schema) == ctor, \
+                f"{name}: 声明 {sorted(schema)} ≠ 构造签名 {sorted(ctor)}"
+            checked += 1
+        assert checked >= 4   # 4 个内置提供者都声明了目录
+
+
+class TestTools:
+    def test_require_tool_fails_loud(self, monkeypatch):
+        import shutil
+        from vidharness.consumers.tools import require_tool
+        monkeypatch.setattr(shutil, "which", lambda name: None)
+        with pytest.raises(RuntimeError, match="未找到 ffmpeg"):
+            require_tool("ffmpeg")
+
+    def test_require_tool_found(self, monkeypatch):
+        import shutil
+        from vidharness.consumers.tools import require_tool
+        monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+        assert require_tool("ffprobe") == "/usr/bin/ffprobe"

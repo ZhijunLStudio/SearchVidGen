@@ -63,6 +63,15 @@ class OpenAICompatJudge:
     name = "judge.openai-compat"
     modalities = ["text", "image", "video"]
     capabilities = {"frame_sampling": True}
+    param_schema = {
+        "base_url": {"type": "str", "required": True, "help": "OpenAI 兼容端点（本地 vLLM）"},
+        "model": {"type": "str", "required": True, "help": "served-model-name"},
+        "api_key": {"type": "secret", "default": "EMPTY"},
+        "temperature": {"type": "float", "default": 0.0},
+        "max_tokens": {"type": "int", "default": 4096},
+        "frame_samples": {"type": "int", "default": 4, "help": "视频抽帧数"},
+        "disable_thinking": {"type": "bool", "default": True, "help": "关闭思考防 token 燃烧"},
+    }
 
     def __init__(self, base_url: str, model: str, api_key: str = "EMPTY",
                  temperature: float = 0.0, max_tokens: int = 4096,

@@ -36,9 +36,10 @@ harness/vidharness/
 │   ├── segment_director.py  #   剧本→逐段生成(首尾帧衔接)→跨段评测→总装
 │   └── assemble.py          #   FFmpeg 拼接 + 字幕烧录
 ├── core/
-│   ├── registry.py          # 注册表（@register 能力schema校验 / instantiate 参数校验 / 按能力路由）
+│   ├── registry.py          # 注册表（@register 能力schema校验 / instantiate 参数声明校验 / 按能力路由）
 │   ├── config.py            # 任务配置 schema 校验（fail loud：拼错键拒绝启动）
-│   ├── experiment.py        # 实验：manifest/产物/缓存/断点续跑/配置快照/成本
+│   ├── experiment.py        # 实验：events.jsonl 事件溯源 + manifest 投影/缓存/断点续跑/成本
+│   ├── invariants.py        # 运行时不变量（manifest↔文件↔事件流关系）+ vh doctor
 │   ├── memory.py            # 经验记忆（环境反馈积累）
 │   └── report.py            # 实验对比报告
 ├── tasks/story.yaml         # 组合配置（对应 cordis.yml：选提供者/评测维度/重试）
@@ -57,6 +58,12 @@ harness/vidharness/
    评分 < 阈值 → judge 反馈注入下一次生成指令 → 自动重试。
 4. **实验即产物**：manifest.json 记录模型版本/参数/seed/耗时/成本；同任务可跑多模型对比。
    每次运行把**有效任务配置冻结**为 run 目录内 config.yaml（可重建 + 续跑一致性守卫）。
+5. **事件溯源 + 不变量**：`events.jsonl` 是权威记录（追加式，崩溃可重放重建
+   manifest 投影）；`vh doctor <run>` 断言 manifest↔文件↔事件流的关系，
+   finalize 时自动校验，证据不完整响亮失败。
+6. **声明式提供者目录**：每个适配器声明 capabilities（能力 schema 校验）与
+   param_schema（参数类型/取值/必需），`vh adapters --verbose` 即自助文档；
+   支持 `route:` 按能力路由与 `generator.fallback` 降级链。
 
 ## 决策记忆（Agent Notes）
 
@@ -80,9 +87,11 @@ harness/vidharness/
 2. ✅ H3-Base 本地端到端 + 三模式衔接对比（E1-E10，8-15）
 3. ✅ 范式对齐轮（8-16）：任务配置 fail-loud 校验、能力 schema + 按能力路由、
    实验配置快照与续跑守卫、评测结算归属消费者（weight/min_score 生效）、
-   成本口径声明化；Bug#1-#4 修复（详见 .agents/notes/implemented/2026-08-16-*）
-4. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
-5. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+   成本口径声明化；Bug#1-#4 修复
+4. ✅ 事件溯源轮（8-16）：events.jsonl 权威事件流 + 崩溃重放恢复、
+   运行时不变量 + vh doctor、提供者参数声明目录、裁判原始输出归档 artifacts/judge
+5. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
+6. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -176,3 +185,10 @@ ref 是更强的一致化工具（锚点质量决定一致性下限）。
 - Bug#4 实验不冻结任务配置，对比脚本只能硬编码 run_id 猜衔接模式。
 全部修复并加回归测试（30 passed），决策沉淀在 .agents/notes/implemented/2026-08-16-*。
 经验：**"配置从产物回读"、"字符串嗅探"、"自由 dict 能力键"是静默 bug 的三类温床**。
+
+### E12：不变量体检让旧实验的布局问题现形（2026-08-16）
+`vh doctor` 上线首跑即对 8-15 的实验目录报出 16 条违规：裁判原始输出
+（judge_*.json，dict 格式）与评测明细（记录列表）混放在 eval/ 目录。
+根因：裁判 workdir 指向 eval_dir。修复：裁判原始输出迁至 artifacts/judge/
+（作为产物经事件流归档），eval/ 只保留评测明细记录；doctor 对旧布局给出迁移提示。
+经验：**关系不变量（"此目录只放哪种文件"）能抓住 schema 校验看不见的结构污染**。

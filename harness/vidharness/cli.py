@@ -16,10 +16,44 @@ from .consumers.segment_director import SegmentDirector
 from .core.registry import list_adapters, load_builtin_adapters
 
 
-def cmd_adapters(_args):
+def cmd_adapters(args):
     load_builtin_adapters()
-    for name, cls in sorted(list_adapters().items()):
-        print(f"  {name:28s} -> {cls}")
+    from .core.registry import capabilities as caps_of, get
+    for name in sorted(list_adapters()):
+        cls = get(name)
+        caps = caps_of(name)
+        line = f"  {name:28s} -> {cls.__name__}"
+        if caps:
+            line += f"  能力: {caps}"
+        print(line)
+        if args.verbose:
+            schema = getattr(cls, "param_schema", None)
+            if schema:
+                print("    参数声明:")
+                for k, s in schema.items():
+                    req = "*" if s.get("required") else " "
+                    typ = s.get("type", "?")
+                    default = "" if s.get("default") is None else f"（默认 {s.get('default')!r}）"
+                    choices = f" 可选 {list(s['choices'])}" if "choices" in s else ""
+                    print(f"    {req} {k} ({typ}){choices}{default}: {s.get('help', '')}")
+            else:
+                print("    （未声明参数目录，按构造签名校验）")
+
+
+def cmd_doctor(args):
+    from .core.invariants import check_experiment
+    path = Path(args.run)
+    if not (path / "manifest.json").exists():
+        raise SystemExit(f"找不到 manifest.json: {path}")
+    violations = check_experiment(path)
+    if violations:
+        print(f"❌ 不变量违规 {len(violations)} 条:")
+        for v in violations:
+            print(f"  - {v}")
+        raise SystemExit(1)
+    has_events = (path / "events.jsonl").exists()
+    print(f"✅ 不变量通过: {path}")
+    print(f"   事件流: {'有（可重放）' if has_events else '无（2026-08-16 前的旧 run）'}")
 
 
 def cmd_feedback(args):
@@ -77,8 +111,13 @@ def main(argv=None):
     pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)
 
-    pa = sub.add_parser("adapters", help="列出适配器")
+    pa = sub.add_parser("adapters", help="列出适配器（--verbose 显示参数声明目录）")
+    pa.add_argument("--verbose", action="store_true", help="显示能力与参数声明")
     pa.set_defaults(fn=cmd_adapters)
+
+    pd = sub.add_parser("doctor", help="检查实验目录的运行时不变量（manifest↔文件↔事件流）")
+    pd.add_argument("run", help="实验 run 目录（含 manifest.json）")
+    pd.set_defaults(fn=cmd_doctor)
 
     pf = sub.add_parser("feedback", help="把用户意见写入经验记忆（环境反馈直达）")
     pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")

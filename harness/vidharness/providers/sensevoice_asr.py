@@ -13,6 +13,11 @@ from ..seams import Artifact, ArtifactMeta
 class SenseVoiceTranscriber:
     name = "transcribe.sensevoice-small"
     capabilities = {"language": "zh+multi", "device": "cpu", "emotion_tags": True}
+    param_schema = {
+        "device": {"type": "str", "default": "cpu", "choices": ["cpu", "cuda"]},
+        "language": {"type": "str", "default": "zh"},
+        "use_itn": {"type": "bool", "default": True, "help": "逆文本归一化"},
+    }
 
     def __init__(self, device: str = "cpu", language: str = "zh", use_itn: bool = True):
         self.device = device

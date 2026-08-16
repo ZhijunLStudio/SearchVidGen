@@ -51,12 +51,17 @@ python -m vidharness.cli report story_short --output experiments
 python scripts/compare_chains.py experiments/story_short
 python scripts/collect_evidence.py experiments/story_short/<run_id>
 
+# 体检 / 目录
+python -m vidharness.cli doctor experiments/story_short/<run_id>   # 运行时不变量
+python -m vidharness.cli adapters --verbose                        # 能力+参数声明目录
+
 # 测试
 python -m pytest tests/ -q
 ```
 
-每个 run 目录包含：manifest.json（元信息/成本/重试）+ config.yaml（有效配置快照）+
-artifacts/（产物，.meta.json 含完整输入）+ eval/（评测明细）。
+每个 run 目录包含：events.jsonl（权威事件流）+ manifest.json（投影，可重放重建）+
+config.yaml（有效配置快照）+ artifacts/（产物，.meta.json 含完整输入，judge/ 为
+裁判原始输出）+ eval/（评测明细记录）。
 
 ## 关键参数（tasks/*.yaml）
 
@@ -69,6 +74,7 @@ artifacts/（产物，.meta.json 含完整输入）+ eval/（评测明细）。
 - `disable_thinking`: true（防 token 燃烧；如需更严谨评分可 false）
 - `min_score`/`weight`: 评测阈值与权重（由消费者统一结算，改配置即生效）
 - `cost.gpu_price_usd_per_hour`: 本地 GPU 成本口径（默认 1.2）
+- params 类型/取值/必需性由适配器的 param_schema 声明目录校验（fail loud）
 
 ## 决策记录
 

@@ -52,8 +52,8 @@ class SegmentDirector:
         if config.get("audio_verify"):
             required["audio"] = True
         caps = check_capabilities(self.generator, required, context="generator")
-        exp.manifest["generator_capabilities"] = caps
-        exp.manifest["chain_mode"] = self.chain_mode
+        exp.set_meta("generator_capabilities", caps)
+        exp.set_meta("chain_mode", self.chain_mode)
 
         self.judge = instantiate(config["judge"]["adapter"],
                                  config["judge"].get("params", {}), context="judge")
@@ -124,7 +124,8 @@ class SegmentDirector:
                                             f"{_json.dumps(art.payload, ensure_ascii=False)}")
                         for c in crit]
             try:
-                verdict = run_judge(self.judge, [], embedded, self.exp.eval_dir)
+                verdict = run_judge(self.judge, [], embedded,
+                                    self.exp.artifacts_dir / "judge", exp=self.exp)
                 rec = {"attempt": attempt, "artifact": str(art.path), **verdict}
                 self.exp.save_eval("script_judge", [rec])
                 feedback = verdict.get("feedback", "")
@@ -194,7 +195,8 @@ class SegmentDirector:
             prev_last = self._extract_last_frame(videos[i - 1], self.exp)
             cur_first = self._extract_frame(videos[i], 0.0, self.exp)
             verdict = run_judge(self.judge, [prev_last, cur_first],
-                                cross_crit, self.exp.eval_dir)
+                                cross_crit, self.exp.artifacts_dir / "judge",
+                                exp=self.exp)
             rec = {"segment_pair": [i, i + 1], **verdict}
             records.append(rec)
         self.exp.save_eval("cross_consistency", records)
@@ -265,6 +267,8 @@ class SegmentDirector:
 
     @staticmethod
     def _extract_frame(video: Path, t: float, exp: Experiment) -> Optional[Path]:
+        from .tools import require_ffmpeg
+        require_ffmpeg()
         out = exp.artifacts_dir / "frames"
         out.mkdir(exist_ok=True)
         dst = out / f"{video.stem}_t{t:.2f}.jpg"
@@ -276,6 +280,9 @@ class SegmentDirector:
         return dst if dst.exists() else None
 
     def _extract_last_frame(self, video: Path, exp: Experiment) -> Optional[Path]:
+        from .tools import require_ffmpeg, require_ffprobe
+        require_ffmpeg()
+        require_ffprobe()
         out = exp.artifacts_dir / "frames"
         out.mkdir(exist_ok=True)
         dst = out / f"{video.stem}_last.jpg"

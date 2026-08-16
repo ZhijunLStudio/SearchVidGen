@@ -36,6 +36,13 @@ class DeepSeekScriptGenerator:
 
     name = "script.deepseek-v4-flash"
     capabilities = {"language": "zh+en", "json_output": True}
+    param_schema = {
+        "api_key": {"type": "secret", "default": None, "help": "DeepSeek API key（缺省读环境）"},
+        "base_url": {"type": "str", "default": "https://api.deepseek.com"},
+        "model": {"type": "str", "default": "deepseek-chat"},
+        "temperature": {"type": "float", "default": 0.7},
+        "max_tokens": {"type": "int", "default": 8192},
+    }
 
     def __init__(self, api_key: str | None = None, base_url: str = "https://api.deepseek.com",
                  model: str = "deepseek-chat", temperature: float = 0.7, max_tokens: int = 8192):

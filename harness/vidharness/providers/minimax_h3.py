@@ -37,6 +37,17 @@ class MiniMaxH3Local:
         "max_duration_s": 15, "audio": True, "refs": 9,
         "first_last_frame": True, "resolution": "768p", "backend": "local",
     }
+    # 参数声明目录（配置平面：提供者拥有 params 的语义；instantiate 据此校验）
+    param_schema = {
+        "model_path": {"type": "path", "required": True, "help": "H3 权重目录（diffusers 子目录）"},
+        "gpu": {"type": "str", "default": "6", "help": "CUDA_VISIBLE_DEVICES（如 '4,6' 双卡）"},
+        "variant": {"type": "str", "default": "fl2va",
+                    "choices": ["t2va", "fl2va", "ref2va"], "help": "生成工作流变体"},
+        "num_frames": {"type": "int", "default": None, "help": "帧数（缺省按 duration×24）"},
+        "seed": {"type": "int", "default": None, "help": "随机种子"},
+        "guidance_scale": {"type": "float", "default": 4.5, "help": "引导系数"},
+        "steps": {"type": "int", "default": None, "help": "去噪步数（缺省用管道默认）"},
+    }
 
     def __init__(self, model_path: str, gpu: str = "6", variant: str = "fl2va",
                  num_frames: Optional[int] = None, seed: Optional[int] = None,
@@ -282,6 +293,13 @@ class MiniMaxH3API:
     capabilities = {
         "max_duration_s": 15, "audio": True, "refs": 9,
         "first_last_frame": True, "resolution": "2K", "backend": "api",
+    }
+    param_schema = {
+        "api_key": {"type": "secret", "default": "", "help": "MiniMax API key（缺省读环境）"},
+        "base_url": {"type": "str", "default": "https://api.minimaxi.com"},
+        "resolution": {"type": "str", "default": "768P", "choices": ["768P", "2K"]},
+        "duration": {"type": "int", "default": 8, "help": "单次生成时长（秒）"},
+        "ratio": {"type": "str", "default": "16:9"},
     }
 
     def __init__(self, api_key: str = "", base_url: str = "https://api.minimaxi.com",

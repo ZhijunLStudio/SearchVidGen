@@ -14,13 +14,15 @@ from typing import List, Optional
 
 
 def _ffprobe_duration(path: Path) -> float:
+    from .tools import require_ffprobe
+    require_ffprobe()
     out = subprocess.run(
         ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
         capture_output=True, text=True)
     try:
         return float(out.stdout.strip())
     except Exception:
-        return 5.0
+        raise RuntimeError(f"无法读取视频时长（ffprobe 失败）: {path}: {out.stderr[:200]}")
 
 
 def _gen_srt(narrations: List[str], durations: List[float], out: Path):
@@ -45,6 +47,8 @@ def _fmt(sec: float) -> str:
 
 def assemble_final(videos: List[Path], audios: List[Path], narrations: List[str],
                    out_dir: Path, audio_in_video: bool = False) -> Path:
+    from .tools import require_ffmpeg
+    require_ffmpeg()
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / "final_video.mp4"
 

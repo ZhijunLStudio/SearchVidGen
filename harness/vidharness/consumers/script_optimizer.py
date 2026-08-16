@@ -33,7 +33,8 @@ class ScriptOptimizer:
         embedded = [replace(c, question=f"{c.question}\n\n剧本内容：\n"
                                         f"{json.dumps(art.payload, ensure_ascii=False)}")
                     for c in criteria]
-        return run_judge(self.judge, [], embedded, self.exp.eval_dir)
+        return run_judge(self.judge, [], embedded,
+                         self.exp.artifacts_dir / "judge", exp=self.exp)
 
     def optimize(self, query: str, brief: str, criteria: List[JudgeCriteria],
                  workdir) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:

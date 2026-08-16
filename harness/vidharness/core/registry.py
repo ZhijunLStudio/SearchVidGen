@@ -92,18 +92,63 @@ def resolve(adapter: Union[str, Any]) -> Any:
     return adapter
 
 
+def _type_ok(typ: str, v: Any) -> bool:
+    """参数声明类型检查（YAML 进来的值：bool 不当作 int）。"""
+    if typ in ("str", "path", "secret"):
+        return isinstance(v, str)
+    if typ == "int":
+        return isinstance(v, int) and not isinstance(v, bool)
+    if typ == "float":
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    if typ == "bool":
+        return isinstance(v, bool)
+    if typ == "list":
+        return isinstance(v, list)
+    return True   # 未知类型声明不拦（前向兼容）
+
+
+def _check_params_schema(name: str, params: Dict[str, Any],
+                         schema: Dict[str, Any], context: str) -> None:
+    """按提供者声明的参数目录校验（fail loud，提供者拥有 params 的语义）。"""
+    if not isinstance(schema, dict):
+        raise TypeError(f"adapter '{name}' 的 param_schema 必须是 dict")
+    for k, v in params.items():
+        if k not in schema:
+            raise RuntimeError(
+                f"[{context}] 适配器 '{name}' 不接受参数 '{k}'（声明: {sorted(schema)}）")
+        spec = schema[k]
+        if not isinstance(spec, dict):
+            raise TypeError(f"adapter '{name}' 参数 '{k}' 的声明必须是 dict")
+        typ = spec.get("type")
+        if typ and not _type_ok(typ, v):
+            raise RuntimeError(
+                f"[{context}] 参数 '{k}' 类型应为 {typ}，得到 {type(v).__name__}（{v!r}）")
+        if "choices" in spec and v not in spec["choices"]:
+            raise RuntimeError(
+                f"[{context}] 参数 '{k}' 只允许 {list(spec['choices'])}，得到 {v!r}")
+    for k, spec in schema.items():
+        if spec.get("required") and k not in params:
+            raise RuntimeError(
+                f"[{context}] 适配器 '{name}' 缺少必需参数 '{k}'"
+                f"（{spec.get('help', '')}）".rstrip())
+
+
 def instantiate(name: str, params: Dict[str, Any] | None = None,
                 context: str = "") -> Any:
     """实例化注册的适配器，并校验任务配置给的参数（fail loud）。
 
-    - 未知参数：报错并列出可接受参数（防 YAML 拼写错误被静默吞掉）；
-    - 缺少无默认值的必需参数：报错。
-    注册的是实例时原样返回。
+    校验顺序：提供者声明的 param_schema（声明目录，权威）→ 构造签名
+    内省兜底（未声明 schema 的适配器）。未知参数/类型错误/缺必需参数
+    都在最早点报错。
     """
     obj = resolve(name)
     if not isinstance(obj, type):
         return obj
     params = dict(params or {})
+    schema = getattr(obj, "param_schema", None)
+    if schema:
+        _check_params_schema(name, params, schema, context)
+        return obj(**params)
     sig = inspect.signature(obj.__init__)
     allowed = [p for p in sig.parameters
                if p not in ("self",) and sig.parameters[p].kind
