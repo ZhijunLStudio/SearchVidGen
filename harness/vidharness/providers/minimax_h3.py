@@ -36,18 +36,24 @@ RATIO_CANVAS = {
 
 
 def split_dual_card_kwargs(variant: str, kwargs: Dict[str, Any]):
-    """双卡两段式的参数拆分（2026-08-16 Bug#6 修复，返回 (cond, rest)）。
+    """双卡两段式的参数拆分（按 diffusers 声明的子块输入契约，返回 (cond, rest)）。
 
-    - t2va：条件侧只吃 prompt；height/width/num_frames 由生成侧的
-      PrepareLayoutStep 消费——传给条件侧会被 ignored+警告，画布静默回落到
-      模型默认 16:9（E16 的 1344×768 正是默认值巧合）。
-    - fl2va/ref2va：条件侧独占 references/height/width（参考编码在
-      text_encoder 内），num_frames 两侧共享（视频参考归一化，E6）；
-      与修复前的行为完全一致。
+    拆分依据是 get_workflow(variant) 各子块的 **inputs 声明**（权威契约）：
+    - t2va：text_encoder 只声明 prompt；画布/帧数由生成侧 prepare_layout
+      消费（2026-08-16 Bug#6：传给条件侧会被 ignored，画布静默回落 16:9）。
+    - fl2va：before_encode 声明 image/last_image/height/width（条件侧）；
+      keyframes 经 state 流入生成侧 vae_encoder → condition_latents。
+      image 必须进条件侧，否则 vae_encoder 无 keyframes 可编码，
+      生成侧 torch.cat 空列表崩溃（2026-08-16 真机回归暴露）。
+    - ref2va：before_encode 声明 references/height/width/num_frames（E6）。
     """
     kwargs = dict(kwargs)
     cond = {"prompt": kwargs.pop("prompt")}
-    if variant in ("fl2va", "ref2va"):
+    if variant == "fl2va":
+        for k in ("image", "last_image", "height", "width"):
+            if k in kwargs:
+                cond[k] = kwargs.pop(k)
+    elif variant == "ref2va":
         for k in ("references", "height", "width"):
             if k in kwargs:
                 cond[k] = kwargs.pop(k)
@@ -176,6 +182,15 @@ class MiniMaxH3Local:
 
     def generate(self, req: GenRequest, workdir: Path, **kw) -> Artifact:
         workdir.mkdir(parents=True, exist_ok=True)
+        # fl2va 工作流要求每段都有首/尾帧 keyframe：无 keyframe 时其
+        # prepare_condition_latents 无条件执行，condition_latents 为空会在
+        # diffusers 深处以 torch.cat 空列表崩溃（Bug#7/E20）。
+        # 在最早点响亮失败并给出可操作的指引（首段用 anchor 或换 t2va）。
+        if self.variant == "fl2va" and req.first_frame is None and req.last_frame is None:
+            raise RuntimeError(
+                "fl2va 变体需要首帧条件：chain_mode=hard 的首段没有上一段末帧，"
+                "请在 pipeline.context.anchor_refs 提供锚点参考图（首段会以其为"
+                "首帧），或对该任务改用 variant=t2va / chain_mode=none。")
         self._get_pipe()
         t0 = time.time()
 

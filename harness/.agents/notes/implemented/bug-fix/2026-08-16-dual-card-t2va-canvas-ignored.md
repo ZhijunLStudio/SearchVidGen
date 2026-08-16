@@ -19,6 +19,9 @@ canvas"）。画布在生成侧 PrepareLayoutStep 解析，条件侧没拿到 �
    - t2va：条件侧只吃 prompt；height/width/num_frames 全部走生成侧；
    - fl2va/ref2va：条件侧独占 references/height/width、num_frames 两侧共享
      ——与修复前行为完全一致（E6/E7 的 ref2va 配方不受影响）。
+   现状更新（E20）：修复前的 fl2va 拆分本身已因 E6/E7 的 before_encode
+   上移而静默失效（image 未随条件侧传入）；2026-08-16 真机回归暴露并按
+   声明契约修正为 fl2va 条件侧收 image/last_image——详见 fl2va 笔记。
 2. **ratio 归位到任务上下文**：`pipeline.context.ratio`（默认 16:9）。
    此前 ratio 藏在 generator.params 里且被 harness 消费（local 适配器的
    param_schema 里根本没有它）——配置平面越界。API 适配器的 ratio 仍是

@@ -509,7 +509,7 @@ class _TextOnlyGen:
 class TestSegmentDirectorCapabilities:
     """Bug#3 回归：能力校验必须按 chain_mode 推导，而非硬编码 first_last_frame。"""
 
-    def _make_director(self, tmp_path, chain_mode):
+    def _make_director(self, tmp_path, chain_mode, adapters_cache=None):
         from vidharness.consumers.segment_director import SegmentDirector
 
         cfg = {
@@ -522,7 +522,7 @@ class TestSegmentDirectorCapabilities:
             "judge": {"adapter": "judge.cap-test", "params": {}},
         }
         exp = Experiment(task="t", base_dir=tmp_path)
-        return SegmentDirector(exp, cfg)
+        return SegmentDirector(exp, cfg, adapters_cache=adapters_cache)
 
     def test_chain_none_needs_no_frame_capability(self, tmp_path):
         d = self._make_director(tmp_path, "none")
@@ -1375,3 +1375,92 @@ class TestMiniMaxCostSingleSource:
             assert _estimate_cost(res, 10) == round(10 * rate, 4)
         with pytest.raises(RuntimeError, match="未声明分辨率"):
             _estimate_cost("4K", 10)
+
+
+class TestAdapterReuseCache:
+    def test_instantiate_cache_semantics(self):
+        cache = {}
+        a1 = instantiate("script.param-check", {"api_key": "k"}, cache=cache)
+        a2 = instantiate("script.param-check", {"api_key": "k"}, cache=cache)
+        assert a1 is a2                                   # 同参数复用同一实例
+        b = instantiate("script.param-check", {"api_key": "k", "temperature": 0.3},
+                        cache=cache)
+        assert b is not a1                                # 参数不同则新建
+        c1 = instantiate("script.param-check", {"api_key": "k"})
+        c2 = instantiate("script.param-check", {"api_key": "k"})
+        assert c1 is not c2                               # 无缓存保持原语义
+
+    def test_director_shares_generator_across_cells(self, tmp_path):
+        """bench 逐格执行：相同生成器参数的格子复用同一实例（省模型加载）。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        cache = {}
+        d1 = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none",
+                                                              adapters_cache=cache)
+        d2 = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none",
+                                                              adapters_cache=cache)
+        assert d1.generator is d2.generator
+        assert d1.judges["script_judge"] is d2.judges["script_judge"]
+
+    def test_fl2va_keyframe_to_conditioner(self):
+        """fl2va 回归：image/last_image 必须进条件侧（before_encode 声明了它们），
+        否则生成侧 vae_encoder 无 keyframes → condition_latents 空 → 崩溃。"""
+        from vidharness.providers.minimax_h3 import split_dual_card_kwargs
+        kw = {"prompt": "p", "image": "img", "last_image": "li",
+              "height": 768, "width": 1344, "num_frames": 192, "generator": "g"}
+        cond, rest = split_dual_card_kwargs("fl2va", kw)
+        assert cond == {"prompt": "p", "image": "img", "last_image": "li",
+                        "height": 768, "width": 1344}
+        assert rest == {"num_frames": 192, "generator": "g"}
+
+
+class TestFl2VAGuards:
+    def test_fl2va_without_keyframe_fails_loud_before_gpu(self, tmp_path):
+        """Bug#7 回归：fl2va 无 keyframe 在最早点响亮失败（不加载模型、
+        不在 diffusers 深处 torch.cat 崩溃）。"""
+        from vidharness.core.registry import load_builtin_adapters
+        load_builtin_adapters()
+        gen = instantiate("generator.minimax-h3-local", {"model_path": "/x",
+                                                         "variant": "fl2va"})
+        from vidharness.seams import GenRequest as _GenRequest
+        with pytest.raises(RuntimeError, match="fl2va 变体需要首帧条件"):
+            gen.generate(_GenRequest(text="t"), tmp_path)
+
+    def test_hard_first_segment_uses_anchor_as_first_frame(self, tmp_path, monkeypatch):
+        """hard 首段以锚点首图为首帧（fl2va 每段需要 keyframe）。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        anchor = tmp_path / "anchor.jpg"
+        anchor.write_bytes(b"jpg")
+        captured = {}
+
+        @register("generator.capture")
+        class CaptureGen:
+            name = "generator.capture"
+            capabilities = {"max_duration_s": 15, "audio": True, "refs": 9,
+                            "first_last_frame": True, "resolution": "768p",
+                            "backend": "local"}
+            def __init__(self):
+                pass
+            def generate(self, req, workdir, **kw):
+                captured["req"] = req
+                workdir.mkdir(parents=True, exist_ok=True)
+                p = Path(workdir) / "v.mp4"
+                p.write_bytes(b"fake")
+                return Artifact(kind="video", path=p,
+                                meta=ArtifactMeta(adapter=self.name))
+
+        cfg = {
+            "task_name": "t",
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.capture", "params": {}},
+                "context": {"chain_mode": "hard", "anchor_refs": [str(anchor)]},
+            },
+            "judge": {"adapter": "judge.cap-test", "params": {}},
+        }
+        exp = Experiment(task="t", base_dir=tmp_path)
+        d = SegmentDirector(exp, cfg)
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, e: None))
+        script = {"segments": [{"video_prompt": "p", "narration": "n", "duration": 5}]}
+        d.stage_segments(script)
+        assert captured["req"].first_frame == anchor

@@ -135,13 +135,24 @@ def _check_params_schema(name: str, params: Dict[str, Any],
 
 
 def instantiate(name: str, params: Dict[str, Any] | None = None,
-                context: str = "") -> Any:
+                context: str = "", cache: Dict[str, Any] | None = None) -> Any:
     """实例化注册的适配器，并校验任务配置给的参数（fail loud）。
 
     校验顺序：提供者声明的 param_schema（声明目录，权威）→ 构造签名
     内省兜底（未声明 schema 的适配器）。未知参数/类型错误/缺必需参数
     都在最早点报错。
+
+    cache：可选实例复用缓存（键 = name+params 归一化）。由调用方拥有
+    复用范围（bench 逐格执行用它避免每格重载模型）；不进全局状态。
     """
+    if cache is not None:
+        import json as _json
+        key = (name, _json.dumps(params or {}, sort_keys=True, ensure_ascii=False))
+        if key in cache:
+            return cache[key]
+        obj = instantiate(name, params, context=context)
+        cache[key] = obj
+        return obj
     obj = resolve(name)
     if not isinstance(obj, type):
         return obj

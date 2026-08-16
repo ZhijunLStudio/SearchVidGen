@@ -20,7 +20,8 @@ from .core.registry import list_adapters, load_builtin_adapters
 
 
 def run_task(cfg: dict, query: str, output: str,
-             resume: str | None = None, label: str | None = None) -> tuple[Path, Path]:
+             resume: str | None = None, label: str | None = None,
+             adapters_cache: dict | None = None) -> tuple[Path, Path]:
     """执行一次任务运行（bench 逐格执行复用本函数）。返回 (成片, 实验目录)。"""
     task = cfg.get("task_name", "story")
     if resume:
@@ -34,7 +35,7 @@ def run_task(cfg: dict, query: str, output: str,
     if label:
         exp.bind_label(label)
     exp.snapshot_config(cfg)   # 冻结有效配置进实验目录：可重建 + 续跑守卫
-    director = SegmentDirector(exp, cfg)
+    director = SegmentDirector(exp, cfg, adapters_cache=adapters_cache)
     final = director.run(query)
     return final, exp.root
 
@@ -166,9 +167,12 @@ def cmd_bench(args):
     if args.dry_run:
         print("dry-run：未执行生成")
         return
+    # 逐格执行；相同参数的适配器跨格复用（避免每格重载生成模型，E19 已知成本）
+    adapters_cache: dict = {}
     for r in rows:
         print(f"\n▶ bench 格 [{r['label']}]")
-        final, root = run_task(r["cfg"], args.query, args.output, label=r["label"])
+        final, root = run_task(r["cfg"], args.query, args.output, label=r["label"],
+                               adapters_cache=adapters_cache)
         print(f"  完成: {final}")
 
 

@@ -22,15 +22,18 @@ from ..core.registry import check_capabilities, instantiate, resolve
 
 
 class SegmentDirector:
-    def __init__(self, exp: Experiment, config: Dict[str, Any]):
+    def __init__(self, exp: Experiment, config: Dict[str, Any],
+                 adapters_cache: Optional[Dict[str, Any]] = None):
         self.exp = exp
         self.cfg = config
+        self._cache = adapters_cache
         # 衔接策略：hard=首帧硬条件(fl2va) / ref=末帧作参考图(ref2va) / none=无衔接
         self.chain_mode = config.get("pipeline", {}).get("context", {}).get("chain_mode", "none")
 
         self.script_adapter = instantiate(
             config["pipeline"]["script"]["adapter"],
-            config["pipeline"]["script"].get("params", {}), context="script")
+            config["pipeline"]["script"].get("params", {}), context="script",
+            cache=self._cache)
 
         gen_cfg = config["pipeline"]["generator"]
         if "route" in gen_cfg:
@@ -39,7 +42,8 @@ class SegmentDirector:
         else:
             gen_name = gen_cfg["adapter"]
         self.generator: MediaGenerator = instantiate(
-            gen_name, gen_cfg.get("params", {}), context="generator")
+            gen_name, gen_cfg.get("params", {}), context="generator",
+            cache=self._cache)
 
         # 能力校验（fail loud）：按衔接策略推导真实需求，而非硬编码。
         # 校验对象是实例（fallback 等合成提供者的能力是实例级并集，类上没有）。
@@ -56,7 +60,8 @@ class SegmentDirector:
         exp.set_meta("chain_mode", self.chain_mode)
 
         self.judge = instantiate(config["judge"]["adapter"],
-                                 config["judge"].get("params", {}), context="judge")
+                                 config["judge"].get("params", {}), context="judge",
+                                 cache=self._cache)
         # 阶段级裁判路由（E16 待办①）：文本评测阶段（script_judge/optimize）
         # 可覆盖为 text-only 裁判（如 DeepSeek API），消除对 VLM 服务就绪的依赖；
         # 媒体评测阶段（segment/cross）默认用主裁判。
@@ -67,7 +72,7 @@ class SegmentDirector:
             if block:
                 self.judges[key] = instantiate(
                     block["adapter"], block.get("params", {}),
-                    context=f"judge.stages.{key}")
+                    context=f"judge.stages.{key}", cache=self._cache)
             else:
                 self.judges[key] = self.judge
         # 经验记忆：环境反馈在此积累，跨任务泛化（无领域模板）
@@ -187,6 +192,10 @@ class SegmentDirector:
                     req.first_frame = last_frame     # 硬衔接：上一段末帧 → 本段首帧
                 elif chain_mode == "ref":
                     req.refs = [last_frame] + anchor_refs   # 软衔接：末帧作为参考图
+            elif chain_mode == "hard" and anchor_refs:
+                # 首段没有上一段末帧：用锚点首图作首帧（fl2va 每段都需要
+                # keyframe；无锚点时由适配器在最早点 fail loud 给出指引）
+                req.first_frame = anchor_refs[0]
             art, history = run_with_judge(
                 self.generator, self.judges["segment_judge"],
                 self._criteria("segment_judge"), self._retry("segment_retry"),

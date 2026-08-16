@@ -25,13 +25,18 @@ ref2va（参考图软衔接）把参考 latent 拼入打包序列：生成侧 tr
 效果：ref2va 单卡显存 78GB → **38GB**，5s 测试 342s 完成（含 ~4.5min 加载）。
 
 配套经验（E6，双卡拆分的通用要点，int8 同样适用）：
-- 条件侧必须合并 before_encode + text_encoder 两个子块
+- **ref2va** 条件侧必须合并 before_encode + text_encoder 两个子块
   （`SequentialPipelineBlocks.from_blocks_dict`）：参考编码器在 text_encoder 内、
   依赖 before_encode 的 normalized_references；
-- before_encode 需要 num_frames（视频参考归一化）；
+- before_encode 需要 num_frames（ref2va 视频参考归一化）；
 - 参考图参数名是 `references`（`MiniMaxH3ImageReference.from_file`）；
 - 参考图默认按 2048 短边编码导致视觉 token 爆炸 OOM → 缩到 768 短边
   （token 数降 ~7 倍），保留主体特征。
+- **fl2va 拆分注意**（2026-08-16 真机回归发现，E20）：before_encode 拆到
+  条件侧后，其声明的 `image`/`last_image` 必须随条件侧传入——否则 keyframes
+  无从产生，生成侧 vae_encoder 拿到空 condition_latents 崩溃。拆分口径以
+  `get_workflow(variant)` 各子块的 inputs 声明为权威契约
+  （split_dual_card_kwargs，见 minimax_h3.py）。
 
 ## Alternatives considered
 
