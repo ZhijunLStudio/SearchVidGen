@@ -121,6 +121,9 @@ class ExperienceMemory:
         """
         groups: Dict[str, Dict[str, Any]] = {}
         unlabeled: List[Dict[str, Any]] = []
+        # 已提升/experience 项按 complaint 索引（新组归并进同名旧项，防重复）
+        existing_by_label = {str(i["complaint"]): i for i in self._items
+                             if i.get("kind") == "experience" or i.get("promoted")}
         for item in self._items:
             if item.get("kind") == "experience" or item.get("promoted"):
                 continue
@@ -140,19 +143,30 @@ class ExperienceMemory:
                 groups[label] = m
         changed = 0
         promoted = 0
+        merged_into_existing = 0
+        new_groups: List[Dict[str, Any]] = []
         for label, m in groups.items():
+            if label in existing_by_label:
+                target = existing_by_label[label]
+                target["count"] = int(target.get("count", 0)) + int(m.get("count", 1))
+                target["sources"] = (target.get("sources") or [])[-_MAX_SOURCES + 1:] + \
+                    (m.get("sources") or [])[-_MAX_SOURCES:]
+                merged_into_existing += 1
+                continue
             if int(m.get("count", 0)) >= self.promote_threshold:
                 m["promoted"] = True
                 m["promoted_at"] = time.time()
                 promoted += 1
             changed += 1
+            new_groups.append(m)
         # 归并结果替换未提升条目；无标签条目与已提升/experience 原样保留
         kept = [i for i in self._items
                 if i.get("kind") == "experience" or i.get("promoted")]
-        self._items = kept + unlabeled + list(groups.values())
+        self._items = kept + unlabeled + new_groups
         self._flush()
         return {"before": len(self._items), "after": len(self._items),
                 "groups": changed, "promoted": promoted,
+                "merged_into_existing": merged_into_existing,
                 "unlabeled": len(unlabeled)}
 
     def _flush(self):
@@ -209,9 +223,12 @@ class ExperienceMemory:
         self._flush()
 
     def experience_lines(self) -> List[str]:
-        """当前生效的经验教训（提升后的条目），供注入生成提示。"""
+        """当前生效的经验教训（提升后的条目），供注入生成提示（去重防御）。"""
         out = []
+        seen = set()
         for item in self._items:
-            if item.get("kind") == "experience" or item.get("promoted"):
+            if (item.get("kind") == "experience" or item.get("promoted")) \
+                    and item["complaint"] not in seen:
+                seen.add(item["complaint"])
                 out.append(item["complaint"])
         return out

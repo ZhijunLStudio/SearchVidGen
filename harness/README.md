@@ -3,6 +3,24 @@
 > SearchVidGen v2 的核心。不是"又一个一键出片工具"，而是一套**视频生成流水线的实验与评测 Harness**。
 > 对标 LLM 生态的 `lm-evaluation-harness`：适配器是更新单元，任务是评测目标，实验产出可复现证据。
 
+## 快速上手（5 分钟）
+
+```bash
+pip install -e .                                  # 安装（vh 命令入口）
+vh adapters --verbose                             # 看能力与参数声明目录
+vh run tasks/story_smoke.yaml --query "雨夜，一只小猫在旧书店的橱窗前躲雨" \
+   --output experiments                           # 最小真实端到端（2 段×19 步，~25 分钟 GPU）
+vh doctor experiments/story_smoke/<run_id>        # 运行时不变量体检
+vh leaderboard story_smoke                        # 导出基线（leaderboards/ 入库追踪）
+vh regress --output experiments                   # 变体回归套件状态（配置漂移检测）
+vh bench tasks/bench_ablation.yaml --query "..." --dry-run   # 基准矩阵规划（不花 GPU）
+make check                                        # 健康门禁：pytest+coverage+mypy+ruff
+```
+
+接入新模型：`vh scaffold generator my-model` + [cookbook](docs/cookbook/adding-a-provider.md)。
+文档导航：[范式对照](docs/paradigm.md) / [决策记忆](.agents/notes/README.md) /
+[变更日志](CHANGELOG.md) / [操作手册](RUNBOOK.md)。
+
 ## 为什么是 Harness 而不是"流水线"（2026-08 关键判断）
 
 2026 年的全模态模型（MiniMax H3 等）正在把"脚本→图像→视频→TTS→字幕"这一整条分离式流水线

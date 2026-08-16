@@ -2147,3 +2147,14 @@ class TestMemoryConsolidate:
         mem.add("另一条", source="b")
         stats = mem.consolidate(lambda c: "")
         assert stats["unlabeled"] == 2 and len(mem._items) == 2
+
+    def test_consolidate_merges_into_existing_promoted(self, tmp_path):
+        """同名新组归并进已提升旧项（防重复经验）。"""
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=2)
+        mem.add_experience("叙事缺乏起承转合", source="manual")
+        mem.add("叙事只有两个片段没有转折", source="a")
+        mem.add("叙事缺高潮", source="b")
+        stats = mem.consolidate(lambda c: "叙事缺乏起承转合")
+        assert stats["merged_into_existing"] == 1
+        assert mem.experience_lines().count("叙事缺乏起承转合") == 1

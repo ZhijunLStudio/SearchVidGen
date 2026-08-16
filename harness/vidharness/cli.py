@@ -160,18 +160,25 @@ def cmd_memory_consolidate(args):
                                  {"model": "deepseek-chat", "temperature": 0.0})
 
     def canonicalize(complaint: str) -> str:
-        try:
-            art = script_adapter.generate(
-                query=f"把这条视频生成反馈归纳成 10 字以内的规范问题短语"
-                      f"（例：叙事缺乏起承转合 / 旁白不口语化）：{complaint}",
-                template={"brief": "只输出 JSON：{\"label\": \"<短语>\"}，"
-                                   "不要任何其他文字", "segments": 1},
-                workdir=Path("/tmp/vh-consolidate"))
-            label = str((art.payload or {}).get("label", "")).strip()
-            return label[:20] if label else ""
-        except Exception as e:
-            print(f"  ⚠️ 归纳失败（{type(e).__name__}），跳过该条")
-            return ""
+        for attempt in range(2):
+            try:
+                brief = ("只输出 JSON：{\"label\": \"<短语>\"}，不要任何其他文字"
+                         if attempt == 0 else
+                         "上次没有输出 label 字段。必须严格只输出 "
+                         "JSON：{\"label\": \"<10字短语>\"}，禁止其他内容")
+                art = script_adapter.generate(
+                    query=f"把这条视频生成反馈归纳成 10 字以内的规范问题短语"
+                          f"（例：叙事缺乏起承转合 / 旁白不口语化）：{complaint}",
+                    template={"brief": brief, "segments": 1},
+                    workdir=Path("/tmp/vh-consolidate"))
+                label = str((art.payload or {}).get("label", "")).strip()
+                if label:
+                    return label[:20]
+            except Exception as e:
+                if attempt == 1:
+                    print(f"  ⚠️ 归纳失败（{type(e).__name__}），跳过该条")
+                    return ""
+        return ""
 
     mem = ExperienceMemory(Path(args.output) / "_memory.jsonl",
                            promote_threshold=args.threshold)
