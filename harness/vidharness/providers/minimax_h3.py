@@ -397,7 +397,8 @@ class MiniMaxH3API:
 
     def __init__(self, api_key: str = "", base_url: str = "https://api.minimaxi.com",
                  resolution: str = "768P", duration: int = 8, ratio: str = "16:9"):
-        self.api_key = api_key or _load_minimax_key()
+        # 凭据延迟到第一次生成调用解析（E32 准备：规划期 dry-run 不依赖 key）
+        self.api_key = api_key
         self.base_url = base_url
         self.resolution = resolution
         self.duration = duration
@@ -407,7 +408,8 @@ class MiniMaxH3API:
         import requests
         workdir.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        key = self.api_key or _load_minimax_key()   # 首次 I/O 前解析凭据（fail loud）
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
         content: List[Dict[str, Any]] = [{"type": "text", "text": req.text}]
         if req.first_frame is not None:

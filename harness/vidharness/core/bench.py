@@ -46,28 +46,46 @@ def _set_dotted(cfg: Dict[str, Any], path: str, value: Any) -> None:
 
 
 def expand_matrix(base: Dict[str, Any], matrix: List[Dict[str, list]]) -> List[Tuple[str, Dict[str, Any]]]:
-    """笛卡尔积展开：返回 [(格标签, 覆写后的完整配置), ...]。
+    """矩阵展开：返回 [(格标签, 覆写后的完整配置), ...]。
 
-    格标签 = 各轴取值拼接（如 none.t2va.20），用于 manifest.bench_cell 分组对比。
+    两种轴形态：
+    - 单键轴 {路径: [取值...]}：笛卡尔积（现有语义）；
+    - **多键轴 {路径1: [...], 路径2: [...]}：各键取值列表等长、按位配对
+      覆写**（异构格：adapter 与 params 成对切换——本地/API 对比）。
+    格标签 = 各组合值的拼接（dict 值不参与标签，避免冗长）。
     """
     if not isinstance(matrix, list) or not matrix:
         raise BenchError("bench.matrix 必须是非空列表（每项 = 一个变量轴 {路径: [取值...]}）")
     axes: List[List[Tuple[str, Any]]] = []
     for axis in matrix:
-        if not isinstance(axis, dict) or len(axis) != 1:
-            raise BenchError(f"变量轴必须是单键 dict（{axis!r}）")
-        (path, values), = axis.items()
-        if not isinstance(values, list) or not values:
-            raise BenchError(f"变量轴 '{path}' 的取值必须是非空列表")
-        axes.append([(path, v) for v in values])
+        if not isinstance(axis, dict) or not axis:
+            raise BenchError(f"变量轴必须是单键或多键 dict（{axis!r}）")
+        if len(axis) == 1:
+            (path, values), = axis.items()
+            if not isinstance(values, list) or not values:
+                raise BenchError(f"变量轴 '{path}' 的取值必须是非空列表")
+            axes.append([(path, v) for v in values])
+        else:
+            # 多键轴：等长配对（异构格，如 adapter+params 成对切换）
+            bad = [k for k, v in axis.items() if not isinstance(v, list) or not v]
+            if bad:
+                raise BenchError(f"多键轴各键取值必须是等长非空列表（{axis!r}）")
+            if len({len(v) for v in axis.values()}) != 1:
+                raise BenchError(f"多键轴各键取值必须等长（{axis!r}）")
+            n = len(next(iter(axis.values())))
+            # 轴元素 = 对列表（多键）；单键轴的轴元素 = 单对
+            axes.append([[(path, axis[path][i]) for path in axis] for i in range(n)])
     cells: List[Tuple[str, Dict[str, Any]]] = []
     for combo in itertools.product(*axes):
         cfg = copy.deepcopy(base)
         label_parts: List[str] = []
-        for path, value in combo:
-            _set_dotted(cfg, path, value)
-            label_parts.append(str(value))
-        cells.append((".".join(label_parts), cfg))
+        for item in combo:
+            pairs = item if isinstance(item, list) else [item]
+            for path, value in pairs:
+                _set_dotted(cfg, path, value)
+                if not isinstance(value, dict):     # dict 参数不进标签
+                    label_parts.append(str(value))
+        cells.append((".".join(label_parts) or "cell", cfg))
     return cells
 
 

@@ -1,0 +1,14 @@
+# 本地 / 官方 API 生成对比基准（异构格：adapter 与 params 成对切换）
+# 跑法（拿到 MINIMAX_API_KEY 后一条命令）：
+#   export MINIMAX_API_KEY=...
+#   vh bench tasks/bench_api_local.yaml --query "..." --output experiments
+# 无 key 也可 dry-run：规划/预估不依赖凭据（凭据延迟到首次生成解析）
+bench:
+  base: tasks/story_smoke.yaml
+  matrix:
+    - pipeline.generator.adapter: [generator.minimax-h3-local, generator.minimax-h3-api]
+      pipeline.generator.params:
+        - {model_path: /data-ssd/lizhijun/models/MiniMax-H3, gpu: "4,6",
+           variant: t2va, steps: 19, seed: 20260816}
+        - {resolution: 768P, duration: 8}
+  local_min_per_seg: 6

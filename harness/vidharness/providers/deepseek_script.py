@@ -49,7 +49,10 @@ class DeepSeekScriptGenerator:
     def __init__(self, api_key: str | None = None, base_url: str = "https://api.deepseek.com",
                  model: str = "deepseek-chat", temperature: float = 0.7,
                  max_tokens: int = 8192, json_mode: bool = True):
-        self.client = OpenAI(api_key=api_key or _load_token(), base_url=base_url)
+        # 凭据延迟到第一次生成调用解析（规划期 dry-run 不依赖 key）
+        self._api_key_param = api_key
+        self.client = None
+        self.base_url = base_url
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -84,6 +87,9 @@ class DeepSeekScriptGenerator:
         effective_temperature = kw.get("temperature", self.temperature)
         if effective_temperature is not None:
             kwargs["temperature"] = effective_temperature
+        if self.client is None:
+            self.client = OpenAI(api_key=self._api_key_param or _load_token(),
+                                 base_url=self.base_url)
         resp = self.client.chat.completions.create(**kwargs)
         content = resp.choices[0].message.content
         data = parse_script_json(content)

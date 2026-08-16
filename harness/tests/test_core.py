@@ -1896,10 +1896,28 @@ class TestCoverageGaps:
     # ---- bench 分支 ----
     def test_bench_expand_axis_errors(self):
         from vidharness.core.bench import expand_matrix, BenchError
-        with pytest.raises(BenchError, match="单键"):
-            expand_matrix({}, [{"a": [1], "b": [2]}])
+        with pytest.raises(BenchError, match="等长"):
+            expand_matrix({}, [{"a": [1], "b": [2, 3]}])
         with pytest.raises(BenchError, match="非空列表"):
             expand_matrix({}, [{"a": "not-list"}])
+        with pytest.raises(BenchError, match="等长非空列表"):
+            expand_matrix({}, [{"a": [1], "b": "x"}])
+
+    def test_bench_multi_key_paired_axis(self):
+        """异构格：adapter 与 params 成对切换（本地/API 对比）。"""
+        from vidharness.core.bench import expand_matrix
+        base = {"pipeline": {"generator": {"adapter": "x", "params": {}}}}
+        cells = expand_matrix(base, [{
+            "pipeline.generator.adapter": ["generator.minimax-h3-local",
+                                           "generator.minimax-h3-api"],
+            "pipeline.generator.params": [{"model_path": "/m", "gpu": "4,6"},
+                                          {"resolution": "768P", "duration": 8}],
+        }])
+        assert [c[0] for c in cells] == ["generator.minimax-h3-local",
+                                         "generator.minimax-h3-api"]
+        assert cells[0][1]["pipeline"]["generator"]["params"]["model_path"] == "/m"
+        assert cells[1][1]["pipeline"]["generator"]["params"]["resolution"] == "768P"
+        assert cells[1][1]["pipeline"]["generator"]["params"].get("model_path") is None
 
     def test_bench_estimate_unknown_backend_and_missing_rate(self):
         from vidharness.core.bench import estimate_cost, BenchError
