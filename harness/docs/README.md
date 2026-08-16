@@ -5,7 +5,7 @@
 - **[cookbook/adding-a-provider.md](cookbook/adding-a-provider.md)**：
   新模型接入六步清单（vh scaffold 起步）。
 - **[../.agents/notes/](../.agents/notes/README.md)**：Agent Notes 决策记忆
-  （38 篇：为什么这样做、否决了什么），机制说明见 notes/README.md。
+  （36 篇：为什么这样做、否决了什么），机制说明见 notes/README.md。
 - **[../README.md](../README.md)**：架构总览 + 核心机制 + 实验证据
   （E1-E35）+ 路线图。
 - **[../RUNBOOK.md](../RUNBOOK.md)**：本机部署/服务/命令/运维姿势

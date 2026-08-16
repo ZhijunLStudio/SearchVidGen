@@ -1,0 +1,10 @@
+# 经验记忆的 GPU 级因果 A/B（E38）：唯一变量 = memory.path
+# A 臂 = 真实经验记忆；B 臂 = 不存在的路径（空记忆）。
+# 同 query、同 seed（20260816）→ 生成噪声一致，干净因果对照。
+# repeats 2/臂 → 4 格（mean±std 口径）。
+bench:
+  base: tasks/story_smoke.yaml
+  matrix:
+    - memory.path: [_memory.jsonl, _memory_ab_empty.jsonl]
+  repeats: 2
+  local_min_per_seg: 6

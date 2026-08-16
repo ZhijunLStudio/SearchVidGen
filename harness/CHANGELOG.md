@@ -1,7 +1,7 @@
 # Changelog
 
 VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-40）。
-完整决策记录见 `.agents/notes/`（39 篇 Agent Note），实验证据见
+完整决策记录见 `.agents/notes/`（36 篇 Agent Note：35 implemented + 1 proposed），实验证据见
 `README.md` E1-E37，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
