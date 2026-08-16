@@ -56,7 +56,7 @@ def expand_matrix(base: Dict[str, Any], matrix: List[Dict[str, list]]) -> List[T
     """
     if not isinstance(matrix, list) or not matrix:
         raise BenchError("bench.matrix 必须是非空列表（每项 = 一个变量轴 {路径: [取值...]}）")
-    axes: List[List[Tuple[str, Any]]] = []
+    axes: List[List[Any]] = []
     for axis in matrix:
         if not isinstance(axis, dict) or not axis:
             raise BenchError(f"变量轴必须是单键或多键 dict（{axis!r}）")

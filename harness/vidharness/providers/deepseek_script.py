@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
@@ -51,7 +51,7 @@ class DeepSeekScriptGenerator:
                  max_tokens: int = 8192, json_mode: bool = True):
         # 凭据延迟到第一次生成调用解析（规划期 dry-run 不依赖 key）
         self._api_key_param = api_key
-        self.client = None
+        self.client: Optional[OpenAI] = None
         self.base_url = base_url
         self.model = model
         self.temperature = temperature
