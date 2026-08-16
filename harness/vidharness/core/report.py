@@ -76,6 +76,9 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
                     gen_models.setdefault(str(m.get("adapter", "?")),
                                           str(m.get("model", "?")))
         models = [f"{k}:{v}" for k, v in sorted(gen_models.items())]
+        # 裁判来源（judge 产物 meta.adapter；混用裁判时的口径标注，E24）
+        judge_adapters = sorted({a.get("meta", {}).get("adapter", "?")
+                                 for a in manifest.get("stages", {}).get("judge", [])})
         runs.append({
             "run_id": manifest.get("run_id", run_dir.name),
             "dir": str(run_dir),
@@ -83,6 +86,7 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
             "chain_mode": manifest.get("chain_mode"),
             "query": manifest.get("query"),
             "models": models,
+            "judge_adapters": judge_adapters,
             "created_at": manifest.get("created_at"),
             "finished_at": manifest.get("finished_at"),
             "total_elapsed_s": manifest.get("total_elapsed_s", 0),

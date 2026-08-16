@@ -26,6 +26,7 @@ def build(base_dir: Path, task: str) -> Dict[str, Any]:
             "bench_cell": r["bench_cell"],
             "chain_mode": r["chain_mode"],
             "models": r["models"],
+            "judge_adapters": r["judge_adapters"],
             "scores": r["scores"],
             "stage_scores": r["stage_scores"],
             "passed_rate": r["passed_rate"],
@@ -78,17 +79,26 @@ def _render_md(data: Dict[str, Any]) -> str:
         "",
         f"更新：{data['updated_at']}　run 数：{data['run_count']}",
         "",
-        "| Run | Bench 格 | 衔接 | 模型 | 各维度均分 | 通过率 | 成本(USD) | GPU时 |",
-        "|---|---|---|---|---|---|---|---|",
+    ]
+    judges_used = {j for r in rows for j in r.get("judge_adapters", [])}
+    if len(judges_used) > 1:
+        lines.append(
+            f"> ⚠️ 本表混用裁判 {sorted(judges_used)}：评分尺度不可直接对比（E24），"
+            f"请参考 calibration/ 校准数据。")
+        lines.append("")
+    lines += [
+        "| Run | Bench 格 | 衔接 | 模型 | 裁判 | 各维度均分 | 通过率 | 成本(USD) | GPU时 |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         cell = r.get("bench_cell") or "-"
         chain = r.get("chain_mode") or "-"
         models = ", ".join(r.get("models") or ["-"])
+        judges = ", ".join(r.get("judge_adapters") or ["-"])
         passed = r.get("passed_rate")
         passed = "-" if passed is None else f"{passed * 100:.0f}%"
         lines.append(
-            f"| {r['run_id']} | {cell} | {chain} | {models} | "
+            f"| {r['run_id']} | {cell} | {chain} | {models} | {judges} | "
             f"{_fmt_scores(r.get('scores', {}))} | {passed} | "
             f"{r['total_cost_usd']:.4f} | {r.get('local_gpu_hours') or '-'} |")
     lines.append("")

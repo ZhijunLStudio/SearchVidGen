@@ -1553,3 +1553,39 @@ class TestBenchCellStatus:
         assert bench_cell_status(tmp_path, "t", "A", cfg, query="旧故事")["finished"] is True
         # 不同 query → 不匹配（新实验）
         assert bench_cell_status(tmp_path, "t", "A", cfg, query="新故事")["run_id"] is None
+
+
+class TestJudgeSourceAnnotation:
+    def test_collect_extracts_judge_adapters(self, tmp_path):
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
+        exp.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j.json",
+            meta=ArtifactMeta(adapter="judge.deepseek-text")))
+        exp.finalize()
+        runs = collect(tmp_path, "t")
+        assert runs[0]["judge_adapters"] == ["judge.deepseek-text"]
+
+    def test_leaderboard_warns_on_mixed_judges(self, tmp_path):
+        from vidharness.core.leaderboard import export
+        exp = _build_exp(tmp_path)
+        (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
+        (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
+        exp.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j.json",
+            meta=ArtifactMeta(adapter="judge.deepseek-text")))
+        exp.finalize()
+        exp2 = Experiment(task="t", base_dir=tmp_path, run_id="r2")
+        (Path(tmp_path) / "v2.mp4").write_bytes(b"fake")
+        exp2.save_artifact("segments", Artifact(
+            kind="video", path=Path(tmp_path) / "v2.mp4",
+            meta=ArtifactMeta(adapter="generator.x", elapsed_s=1.0)), name="s2")
+        (Path(tmp_path) / "j2.json").write_text("{}", encoding="utf-8")
+        exp2.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j2.json",
+            meta=ArtifactMeta(adapter="judge.openai-compat")))
+        exp2.finalize()
+        json_p, md_p, _ = export(tmp_path, "t", tmp_path / "lb")
+        md = md_p.read_text(encoding="utf-8")
+        assert "混用裁判" in md and "judge.deepseek-text" in md and "judge.openai-compat" in md

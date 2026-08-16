@@ -1,6 +1,6 @@
 {
   "task": "story_smoke",
-  "updated_at": "2026-08-16T12:30:08.327102",
+  "updated_at": "2026-08-16T12:38:22.263785",
   "run_count": 2,
   "runs": [
     {
@@ -9,6 +9,9 @@
       "chain_mode": "none",
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.openai-compat"
       ],
       "scores": {
         "与指令一致性": 10.0,
@@ -37,6 +40,10 @@
       "chain_mode": "none",
       "models": [
         "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "judge_adapters": [
+        "judge.deepseek-text",
+        "judge.openai-compat"
       ],
       "scores": {
         "叙事完整": 5.0,

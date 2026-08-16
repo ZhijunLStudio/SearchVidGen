@@ -73,6 +73,9 @@ class DeepSeekTextJudge:
             messages=[{"role": "user", "content": "\n".join(lines)}],
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            # JSON 模式（E25）：校准实测文本裁判解析失败率 40%，
+            # DeepSeek 官方 JSON 输出从源头保证可解析（提示含 "JSON" 满足前置条件）
+            response_format={"type": "json_object"},
         )
         out = resp.choices[0].message.content or ""
         scores, feedback = parse_scores(out, crits)
