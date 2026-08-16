@@ -1,0 +1,53 @@
+# ref2va 真机回归任务（2026-08-16，E27）：拆分重构后最后一个未复测的变体
+# 环境：h3int8（torch 2.13 + torchao 0.18），单卡 GPU 2，ffmpeg 走 torch env
+task_name: story_ref2va_check
+segments: 2
+
+pipeline:
+  script:
+    adapter: script.deepseek-v4-flash
+    params: {model: deepseek-chat, temperature: 0.9}
+  generator:
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "2"
+      variant: ref2va
+      steps: 15
+      num_frames: 120
+      seed: 20260816
+  context:
+    chain_mode: ref
+    anchor_refs:
+      - assets/anchor_cat.jpg
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 2
+    disable_thinking: true
+  stages:
+    script_judge: {adapter: judge.deepseek-text, params: {model: deepseek-chat}}
+
+script_judge:
+  - {name: 叙事完整, question: "分镜是否构成完整有起伏的故事？", weight: 1.0, min_score: 6}
+  - {name: 可生成性, question: "画面指令是否具体可执行？", weight: 1.0, min_score: 6}
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令的主体/动作/镜头？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（畸形/闪变/崩坏）？", weight: 1.0, min_score: 6}
+
+segment_retry: {max_attempts: 1, inject_feedback: false}
+
+cross_judge:
+  - {name: 跨段一致性, question: "两帧人物/场景是否自然衔接？", weight: 1.0, min_score: 6}
+  - {name: 叙事推进, question: "这两帧是否为合理推进的新镜头（机位/景别有变化），而不是同一画面的复制（冻结帧）？完全相同的画面应给低分", weight: 1.0, min_score: 5}
+
+memory:
+  path: _memory.jsonl
+  promote_threshold: 2
+
+cost:
+  gpu_price_usd_per_hour: 1.2

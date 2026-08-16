@@ -29,6 +29,10 @@ ref2va（参考图软衔接）把参考 latent 拼入打包序列：生成侧 tr
 + VAE 常驻 + `_device` 兜底，且**不用 auto_cpu_offload manager**（两套放置
 机制会打架）。块级流式以每步变慢为代价换显存余量。
 
+复测（2026-08-16，E27）：拆分重构后的 ref2va 真机回归（chain_mode=ref +
+锚点，2 段）完整跑通，int8 画像复现（~30GB、22.7 分钟/2 段），跨段
+一致性/叙事推进双 10.0——配方对重构零回归。
+
 配套经验（E6，双卡拆分的通用要点，int8 同样适用）：
 - **ref2va** 条件侧必须合并 before_encode + text_encoder 两个子块
   （`SequentialPipelineBlocks.from_blocks_dict`）：参考编码器在 text_encoder 内、
