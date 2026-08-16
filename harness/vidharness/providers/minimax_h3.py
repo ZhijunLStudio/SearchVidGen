@@ -65,6 +65,40 @@ def split_dual_card_kwargs(variant: str, kwargs: Dict[str, Any]):
 # ==========================================================================
 # 本地 H3-Base（diffusers）
 # ==========================================================================
+def check_gpu_free(gpu_spec: str, min_free_gb: float = 40.0) -> None:
+    """加载前 GPU 显存预检（E29 故障演练发现：kill -9 父进程会遗留僵尸
+    子进程占住显存，续跑时在 torch 深处 OOM 且报错不可读）。
+
+    对 gpu_spec（物理卡号，如 "4,6"）逐卡检查 nvidia-smi 的空闲显存，
+    低于阈值即响亮失败并给出可操作指引。
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10)
+    except Exception:
+        return   # nvidia-smi 不可用时不拦（非 GPU 环境/开发机）
+    free: Dict[str, float] = {}
+    for line in out.stdout.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) == 2:
+            try:
+                free[parts[0]] = float(parts[1]) / 1024.0
+            except ValueError:
+                continue
+    busy = []
+    for idx in gpu_spec.split(","):
+        idx = idx.strip()
+        if idx in free and free[idx] < min_free_gb:
+            busy.append(f"GPU{idx} 空闲 {free[idx]:.1f}GB < {min_free_gb}GB")
+    if busy:
+        raise RuntimeError(
+            "目标 GPU 显存不足（" + "；".join(busy) + "）。"
+            "可能有僵尸进程占住显存：pkill -f vidharness 清理后重试，"
+            "或改用其他空闲卡（nvidia-smi 查看）。")
+
+
 @register("generator.minimax-h3-local")
 class MiniMaxH3Local:
     name = "generator.minimax-h3-local"
@@ -100,6 +134,7 @@ class MiniMaxH3Local:
     def _get_pipe(self):
         if self._pipe is None:
             import os
+            check_gpu_free(self.gpu)   # 加载前显存预检（E29：僵尸进程占卡时报清晰指引）
             os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu   # 如 "4,6" 或 "2"
             import torch
 

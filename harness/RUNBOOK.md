@@ -29,6 +29,13 @@ CUDA_VISIBLE_DEVICES=7 /data/lizhijun/anaconda3/envs/vllm/bin/python -m vllm.ent
   --port 8030 --max-model-len 12000 --gpu-memory-utilization 0.92 --enforce-eager
 ```
 
+### 中断运行的规范姿势（E29）
+
+- `kill -9 <pid>` 会遗留 diffusers 僵尸子进程占住显存 → 用
+  `pkill -f vidharness` 杀进程组；恢复前 `nvidia-smi` 确认显存释放
+- 适配器加载前有显存预检（<40GB 响亮失败并指引）；续跑对已完成
+  run 幂等、对中断 run 从缓存继续
+
 ## 跑实验
 
 ```bash

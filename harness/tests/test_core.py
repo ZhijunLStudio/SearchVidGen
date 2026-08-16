@@ -1735,3 +1735,29 @@ class TestLeaderboardIndex:
         assert "t" in index and "tB" in index
         assert "混用裁判" in index           # 两任务裁判不同 → 总警告
         assert "judge.deepseek-text" in index and "judge.openai-compat" in index
+
+
+class TestGpuFreeCheck:
+    def _fake_smi(self, monkeypatch, stdout):
+        import subprocess
+        monkeypatch.setattr(subprocess, "run",
+                            lambda *a, **kw: type("R", (), {"stdout": stdout})())
+
+    def test_insufficient_gpu_fails_loud_with_guidance(self, monkeypatch):
+        from vidharness.providers.minimax_h3 import check_gpu_free
+        self._fake_smi(monkeypatch, "0, 40960\n4, 1024\n6, 81920\n")
+        with pytest.raises(RuntimeError, match="僵尸进程"):
+            check_gpu_free("4,6")
+        with pytest.raises(RuntimeError, match="GPU4"):
+            check_gpu_free("4")
+
+    def test_sufficient_gpu_passes(self, monkeypatch):
+        from vidharness.providers.minimax_h3 import check_gpu_free
+        self._fake_smi(monkeypatch, "4, 81920\n6, 81920\n")
+        check_gpu_free("4,6")   # 不抛即通过
+
+    def test_nvidia_smi_unavailable_skips(self, monkeypatch):
+        import subprocess
+        from vidharness.providers.minimax_h3 import check_gpu_free
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: (_ for _ in ()).throw(OSError()))
+        check_gpu_free("4")     # 非 GPU 环境不拦
