@@ -1,0 +1,51 @@
+# 记忆下游效应配对检验基座（E44）：2 段、剧本温度 0、无剧本评审、
+# 固定种子——E38 的下游问题用 E42+E43 的配对设计复测：
+# 臂间唯一变量 = memory.path，同种子对齐生成噪声。
+# 单独 vh run 也可用（记忆 = 生产经验集）。
+task_name: story_memory_check
+segments: 2
+
+pipeline:
+  script:
+    adapter: script.deepseek-v4-flash
+    params: {model: deepseek-chat, temperature: 0.0}
+  generator:
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "4,6"
+      variant: t2va
+      steps: 20
+      seed: 20260816
+  context:
+    chain_mode: none
+    anchor_refs: []
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 2
+    disable_thinking: true
+
+script_judge: []   # 无剧本评审：剧本差异=记忆注入差异（干净处理效应）
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令的主体/动作/镜头？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（畸形/闪变/崩坏）？", weight: 1.0, min_score: 6}
+
+segment_retry: {max_attempts: 1, inject_feedback: false}
+
+cross_judge:
+  - {name: 跨段一致性, question: "两帧人物/场景是否自然衔接？", weight: 1.0, min_score: 6}
+  - {name: 叙事推进, question: "这两帧是否为合理推进的新镜头（机位/景别有变化），而不是同一画面的复制（冻结帧）？完全相同的画面应给低分", weight: 1.0, min_score: 5}
+
+memory:
+  # 相对 exp.base_dir（--output，默认 experiments/）解析——"experiments/" 前缀
+  # 会双重拼接（E44 实测被缺失警告逮住）；基准格用 matrix 覆盖为 A/B 臂
+  path: _memory.jsonl
+  promote_threshold: 2
+
+cost:
+  gpu_price_usd_per_hour: 1.2

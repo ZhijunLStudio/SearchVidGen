@@ -1,0 +1,10 @@
+# 记忆下游效应配对检验（E44）：E38 下游问题用配对种子设计复测。
+# 唯一变量 = memory.path（A=生产经验集，B=空）；同种子对齐生成噪声、
+# 剧本温度 0 + 无剧本评审 → 臂内确定性（E42 裁判 sd=0 + E43 生成 sd=0），
+# n=1/臂即可读出处理效应（若有）。
+bench:
+  base: tasks/story_memory_check.yaml
+  matrix:
+    - memory.path: [_memory.jsonl, _memory_ab_empty.jsonl]
+  repeats: 1
+  local_min_per_seg: 6

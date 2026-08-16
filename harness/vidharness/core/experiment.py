@@ -192,6 +192,11 @@ class Experiment:
         """阶段结束事件（与 stage.started 配对；不变量校验配对）。"""
         self._emit("stage.finished", stage=stage)
 
+    def warn(self, scope: str, msg: str) -> None:
+        """可见化警告事件（E41 通道的公开入口）：重放忽略、
+        不变量不比对，纯"模型可见⟺日志"的降级/异常可见通道。"""
+        self._emit("warning", scope=scope, msg=msg)
+
     # ---- 产物存取 ----
     def save_artifact(self, stage: str, artifact: Artifact, name: Optional[str] = None) -> Path:
         """把产物落进 artifacts/<stage>/ 并记录 manifest。"""

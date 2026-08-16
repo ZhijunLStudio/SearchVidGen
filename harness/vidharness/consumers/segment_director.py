@@ -78,8 +78,15 @@ class SegmentDirector:
         # 经验记忆：环境反馈在此积累，跨任务泛化（无领域模板）
         from ..core.memory import ExperienceMemory
         mem_cfg = config.get("memory", {})
+        mem_path = exp.base_dir / mem_cfg.get("path", "_memory.jsonl")
+        # 显式配置的记忆文件缺失必须可见（E44 审计：静默失忆会让
+        # 自学习闭环形同虚设——空臂 A/B 的有意缺失也会警告，属预期噪音）
+        if mem_cfg.get("path") and not mem_path.exists():
+            exp.warn("memory", f"记忆文件不存在，空记忆启动: {mem_cfg['path']}"
+                              f"（若为 A/B 空臂请忽略）")
+            print(f"   ⚠️ 记忆文件不存在，空记忆启动: {mem_cfg['path']}")
         self.memory = ExperienceMemory(
-            path=exp.base_dir / mem_cfg.get("path", "_memory.jsonl"),
+            path=mem_path,
             promote_threshold=int(mem_cfg.get("promote_threshold", 2)),
         )
 

@@ -2627,3 +2627,26 @@ class TestScriptSystemOverride:
         # 缺省不传 system → 导演人格
         gen.generate("q", {}, tmp_path)
         assert "资深影视导演" in captured["create"]["messages"][0]["content"]
+
+
+class TestMemoryFileVisibility:
+    def test_missing_configured_memory_warns_not_silent(self, tmp_path):
+        """E44 审计：显式配置的记忆文件缺失必须可见（静默失忆=闭环失效）。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        cfg = {
+            "task_name": "t",
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.text-only", "params": {}},
+                "context": {"chain_mode": "none", "anchor_refs": []},
+            },
+            "judge": {"adapter": "judge.cap-test", "params": {}},
+            "memory": {"path": "missing_mem.jsonl", "promote_threshold": 2},
+        }
+        exp = Experiment(task="t", base_dir=tmp_path)
+        SegmentDirector(exp, cfg)
+        assert "warning" in _event_types(exp)          # 缺失可见（事件流）
+        # 未显式配置 path（缺省值）→ 不警告（默认空记忆是合法形态）
+        exp2 = Experiment(task="t", base_dir=tmp_path / "x")
+        SegmentDirector(exp2, {k: v for k, v in cfg.items() if k != "memory"})
+        assert "warning" not in _event_types(exp2)

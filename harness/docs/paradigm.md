@@ -3,8 +3,8 @@
 本文件是 VidHarness 与 [deepseek-harness](
 /data/lizhijun/work/Harness/deepseek-harness) 范式对齐的**可审查映射**：
 每条 DSH 原则 → 本仓库落地（文件/机制）→ 验证证据（E 系列实验 / 测试）。
-决策的"为什么"在 `.agents/notes/`（Agent Notes，43 篇）；证据在
-`README.md` 的 E1-E43；本表只做对照。
+决策的"为什么"在 `.agents/notes/`（Agent Notes，44 篇）；证据在
+`README.md` 的 E1-E44；本表只做对照。
 
 ## 核心范式
 
@@ -20,8 +20,8 @@
 | 显式 > 隐式：缺省是拥有方显式步骤 | run_judge 统一结算（权重/阈值归消费者）；cost 口径声明化；ratio 归 context | Bug#1 修复（E11）；E18 |
 | 事件溯源：模型可见⟺日志 | events.jsonl 权威 + manifest 投影 + 配置快照 + 裁判产物归档 | E16 全链路；E29 SIGKILL 实证；重放测试 |
 | package-owned 运行时不变量 | core/invariants.py + finalize 挂钩 + vh doctor | E12 旧布局现形；E29 配对检查；7 类违规测试 |
-| Agent Notes 决策记忆 | .agents/notes/{proposed,implemented}/（43 篇）+ README 格式规范 | 本仓库的 49 轮演进全靠它沉淀 |
-| 实验即证据（evidence-driven） | experiments/（events+manifest+eval）+ E1-E43 + leaderboard 基线 | E8/E10 衔接结论；E21 修复路径复现 |
+| Agent Notes 决策记忆 | .agents/notes/{proposed,implemented}/（44 篇）+ README 格式规范 | 本仓库的 50 轮演进全靠它沉淀 |
+| 实验即证据（evidence-driven） | experiments/（events+manifest+eval）+ E1-E44 + leaderboard 基线 | E8/E10 衔接结论；E21 修复路径复现 |
 | 基准矩阵（一次只变一个变量） | vh bench + 规划期全格校验 + 成本预估 + 格级断点续跑 | E19 首次真实矩阵；E22 格跳过冒烟 |
 | 会话持久化/断点续跑 | 产物缓存 + 配置快照守卫 + query 守卫 + 进程级恢复 | E28 幂等；E29 kill -9 恢复 |
 | 跨模型对比与成本口径 | report 聚合唯一正源 + leaderboard + 校准 + 回归套件 | E24-E26 量化审计；vh regress 4 任务 ✅ |
@@ -38,7 +38,7 @@
 
 ## 演进节奏
 
-49 轮（2026-08-14 → 08-16）每轮 = 差距分析 → 修复/增强 → 测试 → 真实验证
+50 轮（2026-08-14 → 08-16）每轮 = 差距分析 → 修复/增强 → 测试 → 真实验证
 → Agent Note → 提交。六类证据环环相扣：范式（本表）→ 决策（notes）→
 证据（E 系列）→ 代码（seams/core/consumers）→ 回归（vh regress）→
 基线（leaderboards/）。
