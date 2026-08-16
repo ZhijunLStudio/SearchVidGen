@@ -108,9 +108,12 @@ harness/vidharness/
 7. ✅ 记忆与复盘轮（8-16）：经验记忆提升规则修复（E14，机制曾形同虚设）+
    记录格式版本化；单 run 详情页 vh report --run（概览/配置/产物/评测/事件流）
 8. ✅ 孪生适配器轮（8-16）：judge 缝第二实现 judge.deepseek-text（真实 API 冒烟
-   通过）+ 模态守卫 + 抽帧失败 fail-visible
-9. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（等 API key + 裁判服务就绪）
-10. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+   通过）+ 模态守卫 + 抽帧失败 fail-visible；script 缝第二实现
+   script.openai-compat + 提示/解析契约上移 SD + 阶段生命周期事件与配对不变量
+9. ✅ 真实端到端轮（8-16）：story_smoke 首次真实 GPU 全链路验证（E16），
+   vLLM 裁判服务恢复（GPU 7）——H3 API 对比实验只差 MINIMAX_API_KEY
+10. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验
+11. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -236,3 +239,18 @@ load_warnings + sources 上限 5。回归测试锁定提升语义。
 会被静默传给裁判。修复：run_judge 模态守卫（第一次媒体调用即响亮失败）+
 cross_consistency 抽帧失败记错误记录。
 经验：**单一实现会掩盖协议缺口；第二个真实实现是协议完备性的探测器**。
+
+### E16：新基建首次真实 GPU 端到端验证（2026-08-16）
+story_smoke 任务（2 段×19 步，GPU 4/6 双卡生成 + GPU 7 vLLM 裁判，全真实）：
+- **事件溯源/快照/不变量/详情页在真实运行中全部工作**：24 条事件
+  （run.created→query→config→stage×8→artifact×6→eval×3→finalized），
+  doctor ✅ 零违规，finalize 自动不变量通过，单 run 详情页时间线完整
+- 段级真实裁判：与指令一致性 10.0 / 画面质量 10.0（两段均 passed）；
+  跨段一致性 2.0（chain_mode=none 镜头切换大——对比 E8 同模式 10.0，
+  **none 模式的一致性方差大、与具体剧本强相关**，值得后续量化）
+- 成本实盘：2 段共 29.9 分钟（19 步/段 ~12 分钟）、0.492 GPU 卡时、
+  估算 $0.59；成片 16s@1344×768 含原生音轨
+- 暴露两个待办：①剧本评测在 vLLM 未就绪时被跳过（容错降级有效但缺该维度
+  评价；judge.deepseek-text 可承接文本评测消除此依赖）；②diffusers 双卡
+  t2va conditioner 报 ignored-input 警告（height/width/num_frames），
+  画布最终仍正确（1344×768），留待与上游确认
