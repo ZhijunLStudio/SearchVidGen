@@ -167,9 +167,9 @@ def render_index(out_dir: Path) -> Path:
     mixed = []
     for task in tasks:
         data = _load_baseline(out_dir / f"{task}.json")
-        judges = {j for r in data.get("runs", []) for j in r.get("judge_adapters", [])}
-        if len(judges) > 1:
-            mixed.append(f"{task}: {sorted(judges)}")
+        task_judges = {j for r in data.get("runs", []) for j in r.get("judge_adapters", []) if j}
+        if len(task_judges) > 1:
+            mixed.append(f"{task}: {sorted(task_judges)}")
     mixed_note = ""
     if mixed:
         mixed_note = ("<p>⚠️ 混用裁判的任务：" + esc("；".join(mixed)) +
@@ -223,7 +223,7 @@ def _render_md(data: Dict[str, Any]) -> str:
         f"更新：{data['updated_at']}　run 数：{data['run_count']}",
         "",
     ]
-    judges_used = {j for r in rows for j in r.get("judge_adapters", [])}
+    judges_used = {j for r in rows for j in r.get("judge_adapters", []) if j}
     if len(judges_used) > 1:
         lines.append(
             f"> ⚠️ 本表混用裁判 {sorted(judges_used)}：评分尺度不可直接对比（E24），"

@@ -244,6 +244,7 @@ class MiniMaxH3Local:
                 "请在 pipeline.context.anchor_refs 提供锚点参考图（首段会以其为"
                 "首帧），或对该任务改用 variant=t2va / chain_mode=none。")
         self._get_pipe()
+        assert self._pipe is not None
         t0 = time.time()
 
         fps = 24
@@ -422,16 +423,17 @@ class MiniMaxH3API:
                             "image_url": {"url": _upload(r, headers, self.base_url)},
                             "role": "reference_image"})
 
-        payload = {
+        payload: Dict[str, Any] = {
             "model": "MiniMax-H3",
             "content": content,
             "resolution": self.resolution,
             "duration": req.duration or self.duration,
             "ratio": req.ratio or ("adaptive" if req.first_frame or req.refs else self.ratio),
         }
-        r = requests.post(f"{self.base_url}/v2/video_generation", headers=headers, json=payload, timeout=120)
-        r.raise_for_status()
-        task_id = r.json()["task_id"]
+        resp = requests.post(f"{self.base_url}/v2/video_generation", headers=headers,
+                             json=payload, timeout=120)  # type: ignore[arg-type]
+        resp.raise_for_status()
+        task_id = resp.json()["task_id"]
 
         # 轮询
         while True:
@@ -457,7 +459,7 @@ class MiniMaxH3API:
         meta = ArtifactMeta(adapter=self.name, model="MiniMax-H3-API",
                             params={"resolution": self.resolution, "duration": payload["duration"]},
                             elapsed_s=time.time() - t0,
-                            cost_usd=_estimate_cost(self.resolution, payload["duration"]))
+                            cost_usd=_estimate_cost(self.resolution, int(payload["duration"])))
         return Artifact(kind="video", path=out, meta=meta)
 
 

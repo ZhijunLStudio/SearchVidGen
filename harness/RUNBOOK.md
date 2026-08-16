@@ -84,9 +84,10 @@ python scripts/calibrate_judges.py --k 5
 # h3int8 env 跑 ref2va）
 python -m vidharness.cli regress --output experiments
 
-# 测试
+# 测试（健康门禁全套：pytest + mypy + ruff + doctor + regress）
 python -m pytest tests/ -q
 python -m pytest tests/ -q --cov=vidharness.core --cov-report=term   # core ≥90%
+python -m mypy vidharness/ --ignore-missing-imports                  # 0 问题
 python -m ruff check vidharness/
 
 # 安装（可分发：pip install -e . → vh 命令入口；多机/子进程执行的基础）

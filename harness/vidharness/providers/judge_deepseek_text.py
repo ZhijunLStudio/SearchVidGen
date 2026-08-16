@@ -87,9 +87,11 @@ class DeepSeekTextJudge:
         path.write_text(json.dumps(
             {"raw": out, "criteria": criteria, "scores": scores, "feedback": feedback},
             ensure_ascii=False, indent=2), encoding="utf-8")
+        usage = resp.usage
         meta = ArtifactMeta(adapter=self.name, model=resp.model,
                             elapsed_s=time.time() - t0,
-                            cost_usd=_estimate_cost(resp.usage.prompt_tokens,
-                                                    resp.usage.completion_tokens, self.model))
+                            cost_usd=_estimate_cost(
+                                usage.prompt_tokens if usage else 0,
+                                usage.completion_tokens if usage else 0, self.model))
         return Artifact(kind="scores", path=path, meta=meta,
                         payload={"scores": scores, "feedback": feedback})

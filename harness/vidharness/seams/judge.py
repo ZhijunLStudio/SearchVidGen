@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -37,7 +37,7 @@ class JudgeCriteria:
     weight: float = 1.0
     min_score: float = 6.0
     scale: float = 10.0
-    aliases: list = None
+    aliases: Optional[List[str]] = None
 
     def to_spec(self) -> Dict[str, Any]:
         """本维度的完整规格（传给 judge 提供者的字段 dict）。"""
@@ -78,7 +78,7 @@ def spec_to_criteria(spec: Dict[str, Any]) -> List[JudgeCriteria]:
                 question=str(v.get("question", "")),
                 weight=float(weight),
                 min_score=float(min_score),
-                aliases=aliases,
+                aliases=aliases if aliases is not None else None,
             ))
         else:
             raise TypeError(

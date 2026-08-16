@@ -65,13 +65,14 @@ class OpenAICompatScriptGenerator:
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        content = resp.choices[0].message.content
+        content = resp.choices[0].message.content or ""
         data = parse_script_json(content)             # 输出契约来自 seam
         path = workdir / "script.json"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         billing = "priced" if (self.price_in or self.price_out) else "unpriced"
-        cost = (resp.usage.prompt_tokens / 1e6 * self.price_in +
-                resp.usage.completion_tokens / 1e6 * self.price_out)
+        usage = resp.usage
+        cost = ((usage.prompt_tokens if usage else 0) / 1e6 * self.price_in +
+                (usage.completion_tokens if usage else 0) / 1e6 * self.price_out)
         meta = ArtifactMeta(
             adapter=self.name, model=resp.model,
             params={"temperature": self.temperature, "max_tokens": self.max_tokens,

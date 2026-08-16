@@ -100,7 +100,7 @@ def sample_frames(video: Path, n: int, out_dir: Path) -> List[Path]:
         import imageio
         reader = imageio.get_reader(str(video))
         frames = []
-        for f in reader:
+        for f in reader:  # type: ignore[attr-defined]  # imageio Reader 运行时可迭代
             frames.append(f)
         step = max(1, len(frames) // n)
         import imageio.v2 as iio

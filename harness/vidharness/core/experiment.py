@@ -150,7 +150,7 @@ class Experiment:
             except Exception:
                 pass
         # 3) 全新 run：事件流从 run.created 开始，此后为权威
-        self.manifest: Dict[str, Any] = {
+        self.manifest = {
             "task": task,
             "run_id": self.run_id,
             "created_at": datetime.now().isoformat(),

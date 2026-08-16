@@ -135,7 +135,7 @@ def _check_params_schema(name: str, params: Dict[str, Any],
 
 
 def instantiate(name: str, params: Dict[str, Any] | None = None,
-                context: str = "", cache: Dict[str, Any] | None = None) -> Any:
+                context: str = "", cache: Dict[Any, Any] | None = None) -> Any:
     """实例化注册的适配器，并校验任务配置给的参数（fail loud）。
 
     校验顺序：提供者声明的 param_schema（声明目录，权威）→ 构造签名
@@ -161,7 +161,7 @@ def instantiate(name: str, params: Dict[str, Any] | None = None,
     if schema:
         _check_params_schema(name, params, schema, context)
         return obj(**params)
-    sig = inspect.signature(obj.__init__)
+    sig = inspect.signature(obj)
     allowed = [p for p in sig.parameters
                if p not in ("self",) and sig.parameters[p].kind
                not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]

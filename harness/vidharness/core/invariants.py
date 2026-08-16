@@ -109,7 +109,7 @@ def check_experiment(root: Path) -> List[str]:
                            if ev.get("type") == "stage.started"}
                 finished = {ev.get("stage") for ev in raw_events
                             if ev.get("type") == "stage.finished"}
-                for s in sorted(started - finished):
+                for s in sorted(s for s in started - finished if s):
                     v.append(f"阶段 '{s}' 有 stage.started 但无 stage.finished")
             for stage, arts in proj.get("stages", {}).items():
                 marts = manifest.get("stages", {}).get(stage, [])

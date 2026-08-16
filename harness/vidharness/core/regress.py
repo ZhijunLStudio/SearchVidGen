@@ -42,14 +42,14 @@ def _latest_finished_run(base_dir: Path, task_name: str) -> Optional[Dict[str, A
     task_dir = base_dir / task_name
     if not task_dir.exists():
         return None
-    best = None
+    best: Optional[Dict[str, Any]] = None
     for run_dir in task_dir.iterdir():
         if not run_dir.is_dir():
             continue
         m = _load_json(run_dir / "manifest.json")
-        if not isinstance(m, dict) or not m.get("finished_at"):
+        if not isinstance(m, dict) or not m.get("finished_at"):  # type: ignore[union-attr]
             continue
-        if best is None or (m.get("finished_at") or "") > (best["manifest"].get("finished_at") or ""):
+        if best is None or (m.get("finished_at") or "") > (best["manifest"].get("finished_at") or ""):  # type: ignore[union-attr]
             best = {"run_id": run_dir.name, "dir": run_dir, "manifest": m}
     return best
 

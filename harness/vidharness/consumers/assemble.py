@@ -52,8 +52,8 @@ def assemble_final(videos: List[Path], audios: List[Path], narrations: List[str]
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / "final_video.mp4"
 
-    with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
+    with tempfile.TemporaryDirectory() as tmp:
+        td = Path(tmp)
         durations = [_ffprobe_duration(v) for v in videos]
 
         # 1) 拼接

@@ -20,7 +20,7 @@ def _load_json(path: Path) -> Dict[str, Any]:
 def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
     """扫描 <base>/<task>/*/manifest.json，汇总为实验列表。"""
     task_dir = Path(base_dir) / task
-    runs = []
+    runs: List[Dict[str, Any]] = []
     if not task_dir.exists():
         return runs
     for run_dir in sorted(task_dir.iterdir()):
