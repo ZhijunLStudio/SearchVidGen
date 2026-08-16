@@ -1,8 +1,31 @@
 # Changelog
 
-VidHarness 0.2.0（2026-08-16）—— 对齐 deepseek-harness 范式的 29 轮演进。
-完整决策记录见 `.agents/notes/`（33 篇 Agent Note），实验证据见
-`README.md` E1-E30，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-40）。
+完整决策记录见 `.agents/notes/`（39 篇 Agent Note），实验证据见
+`README.md` E1-E37，范式对照见 `docs/paradigm.md`。
+
+## v0.2.1（2026-08-16 晚）
+
+### 新增
+
+- 异构矩阵轴（adapter+params 成对切换）+ 凭据延迟解析——API 对比实验
+  一键可跑（E 准备轮）
+- 语义聚类 `vh memory-consolidate`（LLM 归纳 + 归并 + 提升）
+- 成本报表 `vh costs`（跨任务 API/GPU/总计聚合）
+- bench repeats（每格 N 次重复，统计比较基建）
+- Makefile 健康门禁（make check）
+
+### 修复
+
+- iterdir 双重拼接（costs 与 export_all 扫描静默为空）
+- consolidate 无标签条目丢弃（数据保全）+ 同名经验重复去重
+- 死代码清理（parse_judge_output/recent_feedback/report_costs）
+
+### 实验证据（E31-E37）
+
+bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
+自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
+E37 机制级因果 A/B：经验注入 +0.70，旁白自然 +2.2 对应被教导维度）。
 
 ## v0.2.0（2026-08-16）
 
