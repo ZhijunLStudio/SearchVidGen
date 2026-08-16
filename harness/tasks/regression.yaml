@@ -1,0 +1,10 @@
+# 变体回归套件清单（vh regress 的输入）
+# 每个任务 = 一个生成变体/衔接策略的真实回归；跑法：
+#   vh regress --output experiments          # 只查状态（最新 run/关键分/配置漂移）
+#   vh regress --run --output experiments    # 执行套件（跳过已完成、续跑未完成）
+# 环境注意：t2va/fl2va 用 torch env；ref2va 用 h3int8 env（分两轮跑）
+tasks:
+  - tasks/story_smoke.yaml          # t2va + chain none（双卡）
+  - tasks/story_canvas.yaml         # t2va 画布 1:1（双卡）
+  - tasks/story_fl2va_check.yaml    # fl2va + hard + 锚点（双卡块级 offload）
+  - tasks/story_ref2va_check.yaml   # ref2va + ref + 锚点（h3int8 单卡 int8）

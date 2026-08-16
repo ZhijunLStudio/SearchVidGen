@@ -1652,3 +1652,51 @@ class TestScriptTemperatureOverride:
         assert art.meta.params["temperature"] == 1.2        # meta 记录有效温度
         gen.generate("q", {}, tmp_path)
         assert captured["create"]["temperature"] == 0.7     # 缺省用构造温度
+
+
+class TestRegressionSuite:
+    def test_status_rows(self, tmp_path):
+        from vidharness.core.regress import status
+        import yaml
+        # 任务 A：有完成的 run 且配置一致
+        (tmp_path / "a.yaml").write_text("task_name: tA\npipeline: {context: {chain_mode: none}}\n",
+                                         encoding="utf-8")
+        ra = tmp_path / "tA" / "rA1"
+        ra.mkdir(parents=True)
+        (ra / "manifest.json").write_text(json.dumps(
+            {"run_id": "rA1", "finished_at": "2026-08-16T10:00:00"}, ensure_ascii=False))
+        (ra / "config.yaml").write_text(
+            yaml.safe_dump({"task_name": "tA", "pipeline": {"context": {"chain_mode": "none"}}},
+                           allow_unicode=True, sort_keys=False))
+        (ra / "eval").mkdir()
+        (ra / "eval" / "segments.json").write_text(json.dumps(
+            [{"scores": {"与指令一致性": 8.0}, "passed": True},
+             {"scores": {"与指令一致性": 10.0}, "passed": True}]))
+        # 任务 B：有完成的 run 但配置漂移
+        (tmp_path / "b.yaml").write_text("task_name: tB\npipeline: {context: {chain_mode: hard}}\n",
+                                         encoding="utf-8")
+        rb = tmp_path / "tB" / "rB1"
+        rb.mkdir(parents=True)
+        (rb / "manifest.json").write_text(json.dumps(
+            {"run_id": "rB1", "finished_at": "2026-08-16T09:00:00"}, ensure_ascii=False))
+        (rb / "config.yaml").write_text(
+            yaml.safe_dump({"task_name": "tB", "pipeline": {"context": {"chain_mode": "none"}}},
+                           allow_unicode=True, sort_keys=False))
+        # 任务 C：未跑过
+        (tmp_path / "c.yaml").write_text("task_name: tC\n", encoding="utf-8")
+        spec = tmp_path / "regression.yaml"
+        spec.write_text("tasks: [a.yaml, b.yaml, c.yaml]\n", encoding="utf-8")
+
+        rows = status(tmp_path, spec)
+        assert rows[0]["run_id"] == "rA1" and rows[0]["drift"] is None
+        assert rows[0]["scores"]["segments"]["与指令一致性"] == 9.0
+        assert rows[1]["drift"] == "配置漂移（快照 ≠ 当前任务文件，需重跑）"
+        assert rows[2]["run_id"] is None and rows[2]["drift"] is None
+
+    def test_render_status(self, tmp_path):
+        from vidharness.core.regress import render_status
+        md = render_status([{"task_file": "a.yaml", "task_name": "tA", "run_id": "rA1",
+                             "scores": {"segments": {"与指令一致性": 9.0}}, "drift": None},
+                            {"task_file": "b.yaml", "task_name": "tB", "run_id": None,
+                             "scores": {}, "drift": None}])
+        assert "✅ 一致" in md and "未跑过" in md and "与指令一致性 9.0" in md

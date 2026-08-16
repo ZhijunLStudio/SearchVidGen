@@ -72,6 +72,10 @@ python scripts/compare_script_optimize.py --query "..." --trials 3
 # 跨裁判校准（同批剧本双裁判打分 → calibration/ 维度级偏移；混用裁判看它）
 python scripts/calibrate_judges.py --k 5
 
+# 变体回归套件（状态表 + 配置漂移检测；--run 分两轮：torch env 跑 t2va/fl2va、
+# h3int8 env 跑 ref2va）
+python -m vidharness.cli regress --output experiments
+
 # 测试
 python -m pytest tests/ -q
 ```

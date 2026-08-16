@@ -100,6 +100,47 @@ def cmd_doctor(args):
     print(f"   事件流: {'有（可重放）' if has_events else '无（2026-08-16 前的旧 run）'}")
 
 
+def cmd_regress(args):
+    from .core.regress import render_status, status
+    if not args.run:
+        rows = status(Path(args.output), Path(args.spec))
+        print(render_status(rows))
+        drift = [r["task_file"] for r in rows if r["drift"]]
+        missing = [r["task_file"] for r in rows if not r["run_id"]]
+        print(f"\n未跑过: {len(missing)}　配置漂移: {len(drift)}")
+        if drift:
+            print("漂移任务（需重跑）:", ", ".join(drift))
+        raise SystemExit(0 if not (drift or missing) else 2)
+    # 执行套件（跳过已完成、续跑未完成；环境按任务分两轮：ref2va 用 h3int8）
+    from .core.regress import load_regression_list
+    for task_file in load_regression_list(Path(args.spec)):
+        import yaml
+        cfg = yaml.safe_load(Path(task_file).read_text(encoding="utf-8"))
+        task_name = cfg.get("task_name", Path(task_file).stem)
+        task_dir = Path(args.output) / task_name
+        latest = None
+        if task_dir.exists():
+            cands = []
+            for d in task_dir.iterdir():
+                m = d / "manifest.json"
+                if not m.exists():
+                    continue
+                try:
+                    man = json.loads(m.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if man.get("finished_at"):
+                    cands.append((man.get("finished_at"), d.name))
+            if cands:
+                latest = sorted(cands)[-1][1]
+        if latest:
+            print(f"⏭ {task_file}: 已完成（{latest}），跳过")
+            continue
+        print(f"▶ {task_file}")
+        final, root = run_task(cfg, args.query, args.output)
+        print(f"  完成: {final}")
+
+
 def cmd_feedback(args):
     from .core.memory import ExperienceMemory
     mem = ExperienceMemory(Path(args.output) / "_memory.jsonl")
@@ -223,6 +264,13 @@ def main(argv=None):
     pl.add_argument("--output", default="experiments", help="实验输出根目录（读取）")
     pl.add_argument("--publish", default="leaderboards", help="基线输出目录（默认可入库追踪）")
     pl.set_defaults(fn=cmd_leaderboard)
+
+    prg = sub.add_parser("regress", help="变体回归套件（状态表 / --run 执行）")
+    prg.add_argument("--spec", default="tasks/regression.yaml", help="套件清单")
+    prg.add_argument("--query", default="雨夜，一只小猫在旧书店的橱窗前躲雨")
+    prg.add_argument("--output", default="experiments", help="实验输出根目录")
+    prg.add_argument("--run", action="store_true", help="执行套件（跳过已完成）")
+    prg.set_defaults(fn=cmd_regress)
 
     pf = sub.add_parser("feedback", help="把用户意见写入经验记忆（环境反馈直达）")
     pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")
