@@ -144,11 +144,15 @@ class Experiment:
         if existing.exists():
             try:
                 self.manifest = json.loads(existing.read_text(encoding="utf-8"))
-                # 老 run（有 manifest 无完整事件流）：manifest 保持权威
-                self.events_complete = False
-                return
-            except Exception:
-                pass
+            except Exception as e:
+                # 审计修复：损坏的 manifest 不能静默当作全新 run 覆盖——
+                # 那会抹掉损坏证据并追加 run.created
+                raise RuntimeError(
+                    f"manifest.json 存在但无法解析（损坏证据，拒绝静默覆盖）: "
+                    f"{existing}: {e}") from e
+            # 老 run（有 manifest 无完整事件流）：manifest 保持权威
+            self.events_complete = False
+            return
         # 3) 全新 run：事件流从 run.created 开始，此后为权威
         self.manifest = {
             "task": task,
@@ -218,8 +222,14 @@ class Experiment:
         if path.exists():
             try:
                 merged = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                merged = []
+            except Exception as e:
+                # 审计修复：eval 文件损坏不再静默重置——事件流是权威，
+                # 从事件流重建已有记录（旧 eval 记录先落事件后写文件）
+                rebuilt = replay_eval_records(self.events_path).get(stage, [])
+                self._emit("warning", scope="save_eval",
+                           msg=f"eval/{stage}.json 无法解析（{e}），"
+                               f"从事件流重建 {len(rebuilt)} 条")
+                merged = rebuilt
         merged, added = _merge_eval_records(merged, results)
         for r in added:
             self._emit("eval.saved", stage=stage, record=r)
@@ -313,6 +323,7 @@ class Experiment:
         price = gpu_price_usd_per_hour if gpu_price_usd_per_hour is not None else 1.2
         # 本地 GPU 时间：按提供者声明的 backend 能力识别（不再按名字嗅探 "local"）
         gpu_s = 0.0
+        unresolved: List[str] = []
         for arts in self.manifest.get("stages", {}).values():
             for a in arts:
                 meta = a.get("meta", {})
@@ -324,8 +335,16 @@ class Experiment:
                         backend = _caps(adapter).get("backend", "")
                     except Exception:
                         backend = ""
+                        if adapter not in unresolved:
+                            # 审计修复：能力解析失败的产物，其本地 GPU 时间
+                            # 被静默排除在成本之外——落 warning 事件可见化
+                            unresolved.append(adapter)
                 if backend == "local":
                     gpu_s += float(meta.get("elapsed_s", 0.0))
+        if unresolved:
+            self._emit("warning", scope="finalize.cost",
+                       msg="产物适配器能力解析失败，其本地 GPU 时间未计入成本: "
+                           + ", ".join(unresolved))
         local_gpu_hours = round(gpu_s / 3600, 3)
         local_gpu_cost = round(gpu_s / 3600 * price, 3)
         total_all = round(self.manifest["total_cost_usd"] + local_gpu_cost, 4)

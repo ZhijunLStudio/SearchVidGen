@@ -1,8 +1,8 @@
 # Changelog
 
-VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-46）。
-完整决策记录见 `.agents/notes/`（37 篇 Agent Note：36 implemented + 1 proposed），实验证据见
-`README.md` E1-E40，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-47）。
+完整决策记录见 `.agents/notes/`（41 篇 Agent Note：40 implemented + 1 proposed），实验证据见
+`README.md` E1-E41，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
@@ -25,14 +25,20 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
 - consolidate 无标签条目丢弃（数据保全）+ 同名经验重复去重
 - 死代码清理（parse_judge_output/recent_feedback/report_costs）
 - 测试文件 ruff 残留（E741/F401）清零——`make lint` 门禁范围外但同标修复
+- **静默行为全量审计（E41）**：43 个异常处理器判级，6 处修复——
+  优化器裁判不可用不再=0 分+噪声进经验记忆（整轮全挂响亮失败）、
+  损坏 manifest 续跑 fail-loud、save_eval 从事件流重建、finalize 成本
+  口径 warning、报告损坏 JSON 可见、script 裁判 outage 落 error 记录、
+  中段末帧失败可见（新增 "warning" 事件通道）
 
-### 实验证据（E31-E40）
+### 实验证据（E31-E41）
 
 bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
 自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
 E37 机制级因果 A/B：经验注入 +0.70，旁白自然 +2.2 对应被教导维度）、
 GPU 级下游效应诚实负结果（E38）、API 适配器 mock 协议验证（E39）、
-session title 全链路落地（E40，真实 API $0.000017/次）。
+session title 全链路落地（E40，真实 API $0.000017/次）、静默行为审计
+（E41，6 处吞异常路径可见化/响亮化 + 真实 run 副本验证）。
 
 ## v0.2.0（2026-08-16）
 

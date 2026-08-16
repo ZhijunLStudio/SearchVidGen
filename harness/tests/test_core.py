@@ -2393,3 +2393,152 @@ class TestLeaderboardTitle:
         assert "| r1 | 星际／迷航 |" in md
         assert "| r2 | - |" in md
         assert data["runs"][0]["title"] == "星际|迷航"  # JSON 基线保留原文
+
+
+class TestSilentBehaviorAuditFixes:
+    """审计轮修复的回归测试：静默吞异常路径全部可见化/响亮化。"""
+
+    def test_corrupt_manifest_fails_loud_not_fresh_run(self, tmp_path):
+        """损坏的 manifest 不能被当作全新 run 静默覆盖（证据保全）。"""
+        run = tmp_path / "t" / "r1"
+        run.mkdir(parents=True)
+        (run / "manifest.json").write_text("{corrupt", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="无法解析"):
+            Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        assert not (run / "events.jsonl").exists()   # 没有追加 run.created
+
+    def test_save_eval_rebuilds_from_events_on_corrupt_file(self, tmp_path):
+        """eval 文件损坏：从事件流重建旧记录，而不是静默清空。"""
+        exp = _build_exp(tmp_path)                    # 已有一条 segments 记录
+        (exp.eval_dir / "segments.json").write_text("{corrupt", encoding="utf-8")
+        exp.save_eval("segments", [{"attempt": 2, "score": 9.0}])
+        data = json.loads((exp.eval_dir / "segments.json")
+                          .read_text(encoding="utf-8"))
+        assert {r["attempt"] for r in data} == {1, 2}  # 旧记录从事件流重建
+        assert "warning" in _event_types(exp)          # 损坏本身可见
+
+    def test_finalize_warns_on_unresolved_adapter_caps(self, tmp_path):
+        """能力解析失败的产物：GPU 时间不再被静默排除，落 warning 事件。"""
+        exp = Experiment(task="t", base_dir=tmp_path)
+        (tmp_path / "v.mp4").write_bytes(b"fake")
+        exp.save_artifact("segments", Artifact(
+            kind="video", path=tmp_path / "v.mp4",
+            meta=ArtifactMeta(adapter="no.such.adapter", elapsed_s=60.0)), name="s1")
+        exp.finalize()
+        assert "warning" in _event_types(exp)
+
+    def test_script_judge_outage_recorded_not_silent(self, tmp_path):
+        """剧本裁判不可用：落 error 记录进 eval，而不是静默接受未评剧本。"""
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        director.cfg["script_judge"] = [
+            {"name": "叙事完整", "question": "完整吗？", "min_score": 6}]
+
+        class DownJudge:
+            name = "judge.down"
+            def judge(self, media, criteria, workdir, **kw):
+                raise RuntimeError("judge down")
+
+        director.judges["script_judge"] = DownJudge()
+        payload = director.stage_script("测试")
+        assert payload["segments"]                     # 剧本仍可继续
+        evals = json.loads((director.exp.eval_dir / "script_judge.json")
+                           .read_text(encoding="utf-8"))
+        assert any("评测不可用" in str(r.get("error", "")) for r in evals)
+
+    def test_missing_last_frame_recorded_for_chain_modes(self, tmp_path, monkeypatch):
+        """中段末帧抽取失败：衔接条件缺失必须可见（E16 同口径）。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        director.chain_mode = "ref"                    # 能力校验已过；只测可见性
+        script = {"segments": [{"video_prompt": "p1", "narration": "n"},
+                               {"video_prompt": "p2", "narration": "n"}]}
+        videos = director.stage_segments(script)
+        assert len(videos) == 2
+        evals = json.loads((director.exp.eval_dir / "segments.json")
+                           .read_text(encoding="utf-8"))
+        assert any("末帧抽取失败" in str(r.get("error", "")) for r in evals)
+        # 只有段1（还有下一段）记录；末段不记录
+        assert sum(1 for r in evals if r.get("segment") == 1) == 1
+
+    def test_optimizer_judge_outage_round_fails_loud(self, tmp_path):
+        """优化器整轮评测不可用：响亮失败 + error 落盘，且不污染经验记忆。"""
+        from vidharness.consumers.script_optimizer import ScriptOptimizer
+        from vidharness.core.memory import ExperienceMemory
+
+        class FakeScript:
+            name = "fake"
+            def generate(self, query, template, workdir, **kw):
+                payload = {"segments": [{"video_prompt": "p", "narration": "n"}]}
+                workdir = Path(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = workdir / "s.json"
+                path.write_text(json.dumps(payload))
+                return Artifact(kind="script", path=path, meta=ArtifactMeta(),
+                                payload=payload)
+
+        class DownJudge:
+            name = "down"
+            def judge(self, media, criteria, workdir, **kw):
+                raise RuntimeError("judge down")
+
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl")
+        exp = Experiment(task="t", base_dir=tmp_path)
+        opt = ScriptOptimizer(FakeScript(), DownJudge(), mem, exp,
+                              rounds=1, candidates=2, target_score=9.9)
+        with pytest.raises(RuntimeError, match="全部不可用"):
+            opt.optimize("目标", "brief", [JudgeCriteria(name="叙事完整",
+                                                         question="q", min_score=6)],
+                         tmp_path / "s")
+        # error 记录已落盘（续跑可恢复），经验记忆零污染
+        evals = json.loads((exp.eval_dir / "script_optimize.json")
+                           .read_text(encoding="utf-8"))
+        assert all(r.get("error") for r in evals)
+        assert mem.experience_lines() == []
+
+    def test_optimizer_partial_outage_no_memory_pollution(self, tmp_path):
+        """部分候选评测失败：记 error、不参与选优、不进经验记忆。"""
+        from vidharness.consumers.script_optimizer import ScriptOptimizer
+        from vidharness.core.memory import ExperienceMemory
+
+        class FakeScript:
+            name = "fake"
+            def generate(self, query, template, workdir, **kw):
+                payload = {"segments": [{"video_prompt": "p", "narration": "n"}]}
+                workdir = Path(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = workdir / "s.json"
+                path.write_text(json.dumps(payload))
+                return Artifact(kind="script", path=path, meta=ArtifactMeta(),
+                                payload=payload)
+
+        class FlakyJudge:
+            name = "flaky"
+            def __init__(self):
+                self.n = 0
+            def judge(self, media, criteria, workdir, **kw):
+                self.n += 1
+                if self.n == 1:
+                    raise RuntimeError("judge down")
+                workdir = Path(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = workdir / "j.json"
+                path.write_text("{}")
+                return Artifact(kind="scores", path=path, meta=ArtifactMeta(),
+                                payload={"scores": {"叙事完整": 8.0},
+                                         "feedback": "pass"})
+
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl")
+        exp = Experiment(task="t", base_dir=tmp_path)
+        opt = ScriptOptimizer(FakeScript(), FlakyJudge(), mem, exp,
+                              rounds=1, candidates=2, target_score=9.9)
+        payload, history = opt.optimize(
+            "目标", "brief", [JudgeCriteria(name="叙事完整", question="q", min_score=6)],
+            tmp_path / "s")
+        assert payload["segments"]
+        assert history[0]["error"] and history[0]["score"] is None   # 失败候选
+        assert history[1]["score"] == 8.0                            # 成功候选照常
+        assert mem.experience_lines() == []                          # 零噪声进记忆

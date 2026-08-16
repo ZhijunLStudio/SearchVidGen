@@ -65,8 +65,17 @@ class ScriptOptimizer:
                 try:
                     verdict = self._judge_script(art, criteria)
                 except Exception as e:
-                    verdict = {"score": 0.0, "passed": False,
-                               "feedback": f"评测不可用: {type(e).__name__}"}
+                    # 评测不可用 ≠ 候选 0 分（审计修复）：记 error 记录、
+                    # 不参与选优、绝不把"评测不可用"写进经验记忆
+                    # （E32 明确要消灭的基础设施噪声）
+                    rec = {"round": rnd, "candidate": k + 1,
+                           "artifact": str(art.path), "score": None,
+                           "passed": False, "error": f"评测不可用: {type(e).__name__}"}
+                    round_records.append(rec)
+                    history.append(rec)
+                    print(f"   [r{rnd}c{k + 1}] 评测不可用（{type(e).__name__}），"
+                          f"已记 error 不参与选优")
+                    continue
                 score = verdict.get("score", 0.0)
                 fb = verdict.get("feedback", "")
                 if fb and fb.strip() and "pass" not in fb[:4].lower():
@@ -86,6 +95,13 @@ class ScriptOptimizer:
                     best_art = art
                     best_fb = fb
             self.exp.save_eval("script_optimize", history)
+            if not any(rec.get("score") is not None for rec in round_records):
+                # 整轮全部评测不可用 → 响亮失败（error 已落盘，续跑可恢复），
+                # 而不是悄悄返回空剧本让下游空跑
+                raise RuntimeError(
+                    f"script 评测在本轮 {len(round_records)} 个候选全部不可用"
+                    f"（judge {getattr(self.judge, 'name', '?')} 不可达？）"
+                    f"——error 记录已保存，修好评测后断点续跑即可恢复")
             if best_score >= self.target_score:
                 print(f"   达标（≥{self.target_score}），停止进化")
                 break

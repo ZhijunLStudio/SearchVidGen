@@ -157,7 +157,12 @@ class SegmentDirector:
                 if verdict.get("passed"):
                     return art.payload
             except Exception as e:
-                print(f"   ⚠️ 剧本评测不可用({type(e).__name__})，跳过")
+                # 评测不可用 ≠ 静默通过（审计修复）：落 error 记录进 eval
+                # （模型可见⟺日志），剧本可继续——剧本阶段是质量门非硬依赖
+                self.exp.save_eval("script_judge", [{
+                    "attempt": attempt,
+                    "error": f"评测不可用: {type(e).__name__}"}])
+                print(f"   ⚠️ 剧本评测不可用({type(e).__name__})，已记 error 继续")
                 return art.payload
             if retry.inject_feedback and feedback:
                 brief = f"{brief}\n上一稿的问题：{feedback}".strip()
@@ -207,6 +212,15 @@ class SegmentDirector:
             )
             seg_videos.append(art.path)
             last_frame = self._extract_last_frame(art.path, self.exp)
+            if last_frame is None and i < len(plans) - 1 \
+                    and chain_mode in ("hard", "ref"):
+                # 抽末帧失败必须可见（E16 同口径，审计修复）：下一段的
+                # 衔接条件静默缺失——记错误记录，而不是假装衔接还在
+                self.exp.save_eval("segments", [{
+                    "segment": i + 1,
+                    "error": f"末帧抽取失败（ffprobe/ffmpeg），"
+                             f"下一段将失去 {chain_mode} 衔接条件"}])
+                print(f"   ⚠️ 段{i + 1}末帧抽取失败：下一段衔接条件缺失（已记录）")
         return seg_videos
 
     # ---- 4. 跨段一致性评测 ----

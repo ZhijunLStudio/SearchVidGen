@@ -524,6 +524,19 @@ E34 方向 → E37 因果）。
   （report.collect 单一正源）
 - 老 run 无 title → 表格显示 "-"，新旧兼容
 
+### E41：静默行为全量审计——6 处吞异常路径可见化/响亮化（2026-08-16）
+- 43 个异常处理器逐个判级（吞掉什么/有无测试/有无文档/逃生通道），
+  6 处修复：①优化器裁判不可用=候选 0 分+噪声进经验记忆（BUG）→
+  error 记录+整轮全挂响亮失败+零记忆污染；②续跑损坏 manifest 被
+  静默当全新 run（BUG）→ fail-loud；③save_eval 损坏文件静默清空 →
+  从事件流重建+warning 事件；④finalize 能力解析失败的 GPU 时间被
+  静默排除 → warning 可见；⑤报告静默跳 run → stderr 提示；
+  ⑥script 裁判不可用只 print → 落 error 记录；中段末帧失败记
+  error 记录（E16 同口径）
+- 新 "warning" 事件类型（scope/msg）：重放忽略、不变量不比对，
+  纯可见通道；剩余 37 处判定为有意的 best-effort
+- 回归测试 +7（155 total）；三条修复路径在真实 run 副本上验证
+
 ### E29：kill -9 故障演练——崩溃恢复实证 + 僵尸进程预检（2026-08-16）
 对真实生成中的 run 执行 SIGKILL 演练：
 - 事件溯源按设计工作：kill 后 events.jsonl 完好、投影一致、无 finalized

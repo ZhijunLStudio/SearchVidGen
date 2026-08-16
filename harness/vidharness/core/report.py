@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -13,7 +14,10 @@ from typing import Any, Dict, List
 def _load_json(path: Path) -> Dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        # 审计修复：损坏的 JSON 不再静默跳过——报告/leaderboard 少掉
+        # 整个 run 或评测时必须有可见提示（模型可见⟺日志）
+        print(f"⚠️ 跳过无法解析的 JSON（{e}）: {path}", file=sys.stderr)
         return {}
 
 
