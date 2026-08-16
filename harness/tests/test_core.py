@@ -1761,3 +1761,15 @@ class TestGpuFreeCheck:
         from vidharness.providers.minimax_h3 import check_gpu_free
         monkeypatch.setattr(subprocess, "run", lambda *a, **kw: (_ for _ in ()).throw(OSError()))
         check_gpu_free("4")     # 非 GPU 环境不拦
+
+
+class TestLegacyJudgeInference:
+    def test_legacy_judge_annotated(self, tmp_path):
+        """旧布局（E12）run：裁判未记录 adapter → 推断标注（口径透明）。"""
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        (exp.eval_dir / "judge_123.json").write_text(
+            '{"raw": "x", "scores": {}}', encoding="utf-8")
+        (exp.final_dir / "final_video.mp4").write_bytes(b"fake")  # 旧口径完整性
+        runs = collect(tmp_path, "t")
+        assert runs[0]["judge_adapters"] == ["judge.openai-compat（推断：旧布局未记录）"]

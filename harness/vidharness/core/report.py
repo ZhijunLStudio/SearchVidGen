@@ -79,6 +79,11 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
         # 裁判来源（judge 产物 meta.adapter；混用裁判时的口径标注，E24）
         judge_adapters = sorted({a.get("meta", {}).get("adapter", "?")
                                  for a in manifest.get("stages", {}).get("judge", [])})
+        # 旧 run（8-16 前，E12 布局）：裁判原始输出在 eval/judge_*.json 且
+        # 未记录 adapter——该时代唯一裁判是 judge.openai-compat，推断标注
+        if not judge_adapters and any(
+                f.name.startswith("judge_") for f in (run_dir / "eval").glob("judge_*.json")):
+            judge_adapters = ["judge.openai-compat（推断：旧布局未记录）"]
         runs.append({
             "run_id": manifest.get("run_id", run_dir.name),
             "dir": str(run_dir),
