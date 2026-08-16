@@ -17,6 +17,14 @@ from ..seams import Artifact, ArtifactMeta, GenRequest
 from ..core.registry import register
 
 # 常用宽高比 → (宽, 高)，短边 768，边长取 32 倍数
+# 官方定价大致区间（CN）：768P 约 ¥0.3/秒、2K 约 ¥0.8/秒；按 7.2 汇率近似 USD。
+# 单一价格正源：capabilities 声明目录（规划预估）与 _estimate_cost（运行时计费）
+# 都读这里——同一事实只在一处维护。
+_MINIMAX_RATES_USD_PER_S = {
+    "768P": round(0.3 / 7.2, 6),
+    "2K": round(0.8 / 7.2, 6),
+}
+
 RATIO_CANVAS = {
     "16:9": (1344, 768),
     "9:16": (768, 1344),
@@ -309,9 +317,9 @@ class MiniMaxH3API:
     capabilities = {
         "max_duration_s": 15, "audio": True, "refs": 9,
         "first_last_frame": True, "resolution": "2K", "backend": "api",
-        # 官方定价近似（¥0.3/秒 768P、¥0.8/秒 2K，按 7.2 汇率）——仅规划预估，
-        # 实际计费以官方为准（与 _estimate_cost 同口径）
-        "cost_rates_usd_per_s": {"768P": 0.042, "2K": 0.111},
+        # 单价声明（规划预估口径；单一正源 _MINIMAX_RATES_USD_PER_S，
+        # 与运行时 _estimate_cost 同源；实际计费以官方为准）
+        "cost_rates_usd_per_s": dict(_MINIMAX_RATES_USD_PER_S),
     }
     param_schema = {
         "api_key": {"type": "secret", "default": "", "help": "MiniMax API key（缺省读环境）"},
@@ -414,6 +422,13 @@ def _load_minimax_key() -> str:
 
 
 def _estimate_cost(resolution: str, duration: int) -> float:
-    # 官方定价大致区间（CN）：768P 约 ¥0.3/秒，2K 约 ¥0.8/秒；按 7.2 汇率近似 USD
-    rate = 0.8 if resolution == "2K" else 0.3
-    return round(duration * rate / 7.2, 4)
+    """官方定价近似（USD/秒）。单一价格正源：_MINIMAX_RATES_USD_PER_S。
+
+    同一事实只在一处维护（capabilities 声明目录与运行时计费共用）；
+    未知分辨率响亮失败，不猜价。
+    """
+    rate = _MINIMAX_RATES_USD_PER_S.get(str(resolution).upper())
+    if rate is None:
+        raise RuntimeError(
+            f"未声明分辨率 '{resolution}' 的单价（已知: {sorted(_MINIMAX_RATES_USD_PER_S)}）")
+    return round(duration * rate, 4)

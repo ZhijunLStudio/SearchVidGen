@@ -1,0 +1,8 @@
+# 画布比例消融基准（bench spec）：16:9 vs 1:1
+# 首次真实 GPU bench 执行（2026-08-16）：每格 1 段×19 步，验证
+# bench 真跑模式 / bench_cell 分组 / 画布修复（E18）在矩阵下的再现
+bench:
+  base: tasks/story_canvas.yaml
+  matrix:
+    - pipeline.context.ratio: ["16:9", "1:1"]
+  local_min_per_seg: 6

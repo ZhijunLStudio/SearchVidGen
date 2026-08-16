@@ -26,6 +26,18 @@ judge:
     model: judge-qwen3.5-27b
     frame_samples: 2
     disable_thinking: true
+  stages:
+    script_judge: {adapter: judge.deepseek-text, params: {model: deepseek-chat}}
+
+script_judge:
+  - {name: 叙事完整, question: "分镜是否构成完整有起伏的故事？", weight: 1.0, min_score: 6}
+  - {name: 可生成性, question: "画面指令是否具体可执行？", weight: 1.0, min_score: 6}
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令的主体/动作/镜头？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（畸形/闪变/崩坏）？", weight: 1.0, min_score: 6}
+
+segment_retry: {max_attempts: 1, inject_feedback: false}
 
 memory:
   path: _memory.jsonl

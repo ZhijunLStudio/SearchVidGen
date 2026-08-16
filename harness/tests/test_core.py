@@ -1361,3 +1361,17 @@ class TestMediaTools:
             (out / f"frame_{i:02d}.jpg").write_bytes(b"jpg")
         frames = sample_frames(tmp_path / "v.mp4", 2, tmp_path)
         assert len(frames) == 2 and frames[0].name == "frame_00.jpg"
+
+
+class TestMiniMaxCostSingleSource:
+    def test_estimate_cost_uses_single_source(self):
+        """单一价格正源：声明目录与运行时计费同源（one home per fact）。"""
+        from vidharness.providers.minimax_h3 import (_estimate_cost,
+                                                     _MINIMAX_RATES_USD_PER_S,
+                                                     MiniMaxH3API)
+        assert MiniMaxH3API.capabilities["cost_rates_usd_per_s"] == \
+            dict(_MINIMAX_RATES_USD_PER_S)
+        for res, rate in _MINIMAX_RATES_USD_PER_S.items():
+            assert _estimate_cost(res, 10) == round(10 * rate, 4)
+        with pytest.raises(RuntimeError, match="未声明分辨率"):
+            _estimate_cost("4K", 10)
