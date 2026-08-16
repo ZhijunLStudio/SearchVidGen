@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 vidharness.egg-info/
 *.egg-info/
+
+# coverage 数据（运行时产物，不入库）
+.coverage

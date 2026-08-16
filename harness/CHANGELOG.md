@@ -1,8 +1,8 @@
 # Changelog
 
-VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-40）。
-完整决策记录见 `.agents/notes/`（36 篇 Agent Note：35 implemented + 1 proposed），实验证据见
-`README.md` E1-E37，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-46）。
+完整决策记录见 `.agents/notes/`（37 篇 Agent Note：36 implemented + 1 proposed），实验证据见
+`README.md` E1-E40，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
@@ -14,18 +14,25 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
 - 成本报表 `vh costs`（跨任务 API/GPU/总计聚合）
 - bench repeats（每格 N 次重复，统计比较基建）
 - Makefile 健康门禁（make check）
+- **run 标题自动生成**：run 完成时 script 提供者提炼 ≤12 字标题
+  （manifest.title 经事件流），leaderboard/报告/详情页三处渲染
+  （report.collect 单一正源；`SegmentDirector.run(before_finalize=...)`
+  钩子保证 finalize 前挂入，E40 真实 API 实证）
 
 ### 修复
 
 - iterdir 双重拼接（costs 与 export_all 扫描静默为空）
 - consolidate 无标签条目丢弃（数据保全）+ 同名经验重复去重
 - 死代码清理（parse_judge_output/recent_feedback/report_costs）
+- 测试文件 ruff 残留（E741/F401）清零——`make lint` 门禁范围外但同标修复
 
-### 实验证据（E31-E37）
+### 实验证据（E31-E40）
 
 bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
 自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
-E37 机制级因果 A/B：经验注入 +0.70，旁白自然 +2.2 对应被教导维度）。
+E37 机制级因果 A/B：经验注入 +0.70，旁白自然 +2.2 对应被教导维度）、
+GPU 级下游效应诚实负结果（E38）、API 适配器 mock 协议验证（E39）、
+session title 全链路落地（E40，真实 API $0.000017/次）。
 
 ## v0.2.0（2026-08-16）
 

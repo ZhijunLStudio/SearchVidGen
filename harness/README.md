@@ -97,6 +97,10 @@ harness/vidharness/
 10. **新模型 = 新文件（带脚手架）**：`vh scaffold <seam> <name>` 生成提供者
     骨架（能力骨架来自 seam schema）；接入清单见
     [docs/cookbook/adding-a-provider.md](docs/cookbook/adding-a-provider.md)。
+11. **session 标题**：run 完成时自动用 script 提供者提炼 ≤12 字标题
+    （manifest.title，经事件流），leaderboard/报告直接可读；
+    finalize 前经 `SegmentDirector.run(before_finalize=...)` 钩子挂入，
+    保证落盘与不变量校验覆盖（E40）。
 
 ## 决策记忆（Agent Notes）
 
@@ -510,6 +514,15 @@ E34 方向 → E37 因果）。
 - 经验：**上游机制有效 ≠ 下游效应可测——效应在每层传播中衰减，
   层间方差决定了需要的最小样本量**。E34 的因果问题以此诚实负结果
   收官：学习的价值在剧本质量，画面层效应交给未来大样本研究
+
+### E40：run 标题自动生成——session title 全链路落地（2026-08-16）
+- 机制：`vh run`/`vh bench` 完成后、finalize 之前，用 script 提供者把
+  query 提炼成 ≤12 字标题 → artifacts/title/ 产物 + manifest.title
+  （经事件流，重放可恢复）；两轮尝试收紧提示，失败静默降级
+- 真实 API 实证：DeepSeek 生成"雨夜暖面"（4 字），成本 $0.000017，
+  doctor 干净；leaderboard MD/对比 HTML/run 详情页三处渲染同源
+  （report.collect 单一正源）
+- 老 run 无 title → 表格显示 "-"，新旧兼容
 
 ### E29：kill -9 故障演练——崩溃恢复实证 + 僵尸进程预检（2026-08-16）
 对真实生成中的 run 执行 SIGKILL 演练：

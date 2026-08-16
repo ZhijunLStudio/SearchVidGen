@@ -62,6 +62,7 @@ def build(base_dir: Path, task: str, calibrate: bool = False,
                     calibrated = True
         rows.append({
             "run_id": r["run_id"],
+            "title": r.get("title"),
             "bench_cell": r["bench_cell"],
             "chain_mode": r["chain_mode"],
             "models": r["models"],
@@ -234,11 +235,18 @@ def _render_md(data: Dict[str, Any]) -> str:
         lines.append("> 📐 标（校准）的评分已按 calibration/ 维度偏移（n≥3）"
                      "换算到主裁判口径（E30）。")
         lines.append("")
+    has_title = any(r.get("title") for r in rows)
     lines += [
+        "| Run | 标题 | Bench 格 | 衔接 | 模型 | 裁判 | 各维度均分 | 通过率 | 成本(USD) | GPU时 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ] if has_title else [
         "| Run | Bench 格 | 衔接 | 模型 | 裁判 | 各维度均分 | 通过率 | 成本(USD) | GPU时 |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
+        # 标题是 LLM 自由文本：剔除表格分隔符，保证 MD 表格结构
+        title = (str(r.get("title") or "").replace("|", "／").strip() or "-") \
+            if has_title else ""
         cell = r.get("bench_cell") or "-"
         chain = r.get("chain_mode") or "-"
         models = ", ".join(r.get("models") or ["-"])
@@ -247,8 +255,9 @@ def _render_md(data: Dict[str, Any]) -> str:
         marker = "（校准）" if r.get("calibrated") else ""
         passed = r.get("passed_rate")
         passed = "-" if passed is None else f"{passed * 100:.0f}%"
+        title_cell = f"{title} | " if has_title else ""
         lines.append(
-            f"| {r['run_id']} | {cell} | {chain} | {models} | {judges} | "
+            f"| {r['run_id']} | {title_cell}{cell} | {chain} | {models} | {judges} | "
             f"{_fmt_scores(scores)}{marker} | {passed} | "
             f"{r['total_cost_usd']:.4f} | {r.get('local_gpu_hours') or '-'} |")
     lines.append("")

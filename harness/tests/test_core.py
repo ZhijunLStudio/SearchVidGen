@@ -17,7 +17,7 @@ from vidharness.core.registry import (register, get, check_capabilities,  # noqa
                                       SEAM_CAPABILITY_SCHEMAS)
 from vidharness.consumers.judge_loop import (parse_scores,  # noqa: E402
                                              finalize_verdict, run_judge)
-from vidharness.seams import (JudgeCriteria, RetryPolicy, Artifact, ArtifactMeta,  # noqa: E402
+from vidharness.seams import (JudgeCriteria, Artifact, ArtifactMeta,  # noqa: E402
                               criteria_to_spec, spec_to_criteria)
 from vidharness.core.experiment import Experiment, replay_events  # noqa: E402
 from vidharness.core.invariants import check_experiment  # noqa: E402
@@ -39,8 +39,8 @@ def _build_exp(tmp_path: Path) -> Experiment:
 
 
 def _event_types(exp: Experiment):
-    return [json.loads(l)["type"]
-            for l in exp.events_path.read_text(encoding="utf-8").splitlines()]
+    return [json.loads(line)["type"]
+            for line in exp.events_path.read_text(encoding="utf-8").splitlines()]
 
 
 class TestRegistry:
@@ -772,7 +772,7 @@ class TestBench:
             expand_matrix(self._base_cfg(), [{"pipeline.generator.params.steps": []}])
 
     def test_plan_validates_every_cell(self, tmp_path):
-        from vidharness.core.bench import plan, BenchError
+        from vidharness.core.bench import plan
         base = tmp_path / "base.yaml"
         base.write_text(json.dumps(self._base_cfg(), ensure_ascii=False), encoding="utf-8")
         spec = {"bench": {"base": str(base),
@@ -992,8 +992,9 @@ class TestExperienceMemory:
         assert mem.load_warnings == []
         # flush 后升级为 v=1
         mem.add("新反馈", source="r1")
-        lines = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
-        assert all(l.get("v") == 1 for l in lines)
+        lines = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines()
+                 if line.strip()]
+        assert all(rec.get("v") == 1 for rec in lines)
 
     def test_corrupt_lines_skipped_with_warning(self, tmp_path):
         from vidharness.core.memory import ExperienceMemory
@@ -1306,7 +1307,6 @@ class TestPerStageJudgeRouting:
         assert d.judges["cross_judge"].name == "judge.cap-test"
 
     def test_director_without_stages_defaults_everywhere(self, tmp_path):
-        from vidharness.consumers.segment_director import SegmentDirector
         d = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
         assert all(j.name == "judge.cap-test" for j in d.judges.values())
 
@@ -1395,7 +1395,6 @@ class TestAdapterReuseCache:
 
     def test_director_shares_generator_across_cells(self, tmp_path):
         """bench 逐格执行：相同生成器参数的格子复用同一实例（省模型加载）。"""
-        from vidharness.consumers.segment_director import SegmentDirector
         cache = {}
         d1 = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none",
                                                               adapters_cache=cache)
@@ -1707,7 +1706,7 @@ class TestRegressionSuite:
 
 class TestLeaderboardIndex:
     def test_export_all_and_index(self, tmp_path):
-        from vidharness.core.leaderboard import export_all, _load_baseline
+        from vidharness.core.leaderboard import export_all
         # 任务 tA：judge.deepseek-text
         exp = _build_exp(tmp_path)
         (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
@@ -1782,7 +1781,6 @@ class TestCalibratedLeaderboard:
     def test_calibrated_scores_applied_to_text_judge_runs(self, tmp_path):
         """E30：校准偏移（n≥3）换算 deepseek-text 评分的 run，vLLM run 不动。"""
         from vidharness.core.leaderboard import build
-        import yaml
         # 校准数据
         calib_dir = tmp_path / "calibration"
         calib_dir.mkdir()
@@ -2221,7 +2219,6 @@ class TestMiniMaxAPIMock:
     def _mock_server(self, tmp_path):
         import http.server
         import threading
-        from pathlib import Path
         import subprocess
 
         # 用 ffmpeg 生成一个 1 秒真实 mp4（若有 ffmpeg；否则最小字节占位）
@@ -2292,3 +2289,107 @@ class TestMiniMaxAPIMock:
             assert art.meta.params["resolution"] == "768P"
         finally:
             server.shutdown()
+
+
+class TestRunTitle:
+    """E40：run 标题自动生成（DSH session title 对齐：模型可见 ⟺ 日志）。"""
+
+    def _make_title_adapter(self, payloads=None, fail=False):
+        calls = []
+
+        class FakeTitleScript:
+            name = "script.fake-title"
+            def generate(self, query, template, workdir, **kw):
+                calls.append((query, template))
+                if fail:
+                    raise RuntimeError("title api down")
+                payload = payloads.pop(0) if payloads else {"title": "星际迷航"}
+                workdir = Path(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = workdir / "title.json"
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                return Artifact(kind="script", path=path, meta=ArtifactMeta(),
+                                payload=payload)
+        return FakeTitleScript(), calls
+
+    def test_title_generated_and_persisted(self, tmp_path):
+        from vidharness.cli import _generate_run_title
+        exp = Experiment(task="story", base_dir=tmp_path)
+        adapter, calls = self._make_title_adapter(payloads=[{"title": "星际迷航"}])
+        assert _generate_run_title(adapter, "宇宙飞船远征的故事", exp) == "星际迷航"
+        assert exp.manifest["title"] == "星际迷航"
+        assert len(exp.manifest["stages"]["title"]) == 1      # 产物落 artifacts/title/
+        assert exp.manifest["total_cost_usd"] == 0.0          # 假适配器无成本
+        assert len(calls) == 1
+        assert "标题" in calls[0][1]["brief"]                  # 提示契约在日志里可见
+        assert replay_events(exp.events_path)["title"] == "星际迷航"  # 事件流可恢复
+        exp.finalize()                                        # finalize 后体检仍通过
+        assert check_experiment(exp.root) == []
+
+    def test_title_retry_then_recover(self, tmp_path):
+        from vidharness.cli import _generate_run_title
+        exp = Experiment(task="story", base_dir=tmp_path)
+        adapter, calls = self._make_title_adapter(
+            payloads=[{"segments": []}, {"title": "重试成功"}])
+        assert _generate_run_title(adapter, "q", exp) == "重试成功"
+        assert len(calls) == 2
+        assert "没有输出 title" in calls[1][1]["brief"]        # 第二次收紧提示
+
+    def test_title_failure_is_silent(self, tmp_path):
+        from vidharness.cli import _generate_run_title
+        exp = Experiment(task="story", base_dir=tmp_path)
+        adapter, _ = self._make_title_adapter(fail=True)
+        assert _generate_run_title(adapter, "q", exp) == ""
+        assert "title" not in exp.manifest
+        assert "title" not in exp.manifest.get("stages", {})
+
+    def test_director_hook_runs_before_finalize(self, tmp_path, monkeypatch):
+        """集成：钩子挂入的元信息必须被 finalize 落盘（而非只存在内存）。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        monkeypatch.setattr(SegmentDirector, "stage_assemble",
+                            lambda self, videos, script: Path(tmp_path) / "final.mp4")
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        final = director.run("测试故事", before_finalize=lambda: None)
+        assert final == Path(tmp_path) / "final.mp4"
+        assert check_experiment(director.exp.root) == []
+
+        def hook():
+            director.exp.set_meta("title", "钩子标题")
+        final = director.run("测试故事", before_finalize=hook)
+        manifest = json.loads(
+            (director.exp.root / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["title"] == "钩子标题"                  # finalize 已落盘
+        assert replay_events(director.exp.events_path)["title"] == "钩子标题"
+        assert check_experiment(director.exp.root) == []
+
+
+class TestLeaderboardTitle:
+    def test_md_table_title_column_and_pipe_sanitized(self, tmp_path):
+        from vidharness.core.leaderboard import build, _render_md
+        from unittest import mock
+        runs = [
+            {"run_id": "r1", "bench_cell": None, "chain_mode": "none", "models": ["a"],
+             "judge_adapters": ["j"], "scores": {"叙事": 8.0}, "stage_scores": {},
+             "calibrated": False, "scores_calibrated": {"叙事": 8.0},
+             "passed_rate": 1.0, "total_cost_usd": 0.1, "total_elapsed_s": 10.0,
+             "local_gpu_hours": 0.1, "created_at": "2026-08-16T10:00:00",
+             "finished_at": "2026-08-16T10:01:00", "title": "星际|迷航"},
+            {"run_id": "r2", "bench_cell": None, "chain_mode": "none", "models": ["a"],
+             "judge_adapters": ["j"], "scores": {"叙事": 7.0}, "stage_scores": {},
+             "calibrated": False, "scores_calibrated": {"叙事": 7.0},
+             "passed_rate": 0.5, "total_cost_usd": 0.2, "total_elapsed_s": 20.0,
+             "local_gpu_hours": 0.2, "created_at": "2026-08-16T09:00:00",
+             "finished_at": "2026-08-16T09:01:00", "title": None},
+        ]
+        with mock.patch("vidharness.core.leaderboard.collect", return_value=runs):
+            data = build(tmp_path, "story")
+            md = _render_md(data)
+        assert "| 标题 |" in md
+        assert "星际／迷航" in md                      # | 被替换，表格结构不破
+        assert "| r1 | 星际／迷航 |" in md
+        assert "| r2 | - |" in md
+        assert data["runs"][0]["title"] == "星际|迷航"  # JSON 基线保留原文

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..core.experiment import Experiment, Timer
 from .judge_loop import run_with_judge, run_judge
@@ -243,7 +243,10 @@ class SegmentDirector:
                                out_dir=self.exp.final_dir, audio_in_video=True)
         return final
 
-    def run(self, query: str) -> Path:
+    def run(self, query: str, before_finalize: Optional[Callable[[], None]] = None) -> Path:
+        """执行全流水线。before_finalize 钩子在 finalize（落盘+不变量校验）
+        之前执行——供调用方挂入 run 级元信息（如标题，E40），确保经事件流
+        持久化且被 finalize 的总额/校验覆盖。"""
         def stage(name: str, fn):
             self.exp.stage_started(name)
             try:
@@ -274,6 +277,8 @@ class SegmentDirector:
             stage("audio_verify", lambda: verify_film(
                 videos, narrations, audio_cfg["adapter"], self.exp))
 
+        if before_finalize is not None:
+            before_finalize()
         self.exp.finalize(gpu_price_usd_per_hour=float(
             (self.cfg.get("cost") or {}).get("gpu_price_usd_per_hour", 1.2)))
         print(f"\n✅ 完成: {final}")

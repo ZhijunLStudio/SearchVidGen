@@ -24,6 +24,33 @@ from .consumers.segment_director import SegmentDirector
 from .core.registry import list_adapters, load_builtin_adapters
 
 
+def _generate_run_title(script_adapter, query: str, exp: Experiment) -> str:
+    """run 标题自动生成（对齐 DSH 的 session title）：用 script 提供者把
+    query 提炼成 ≤12 字标题，写入 manifest.title（经事件流，重放可恢复）。
+
+    失败静默返回 ""——标题是 UX 增强，不是证据完整性的一部分（E40）。
+    """
+    workdir = exp.artifacts_dir / "title"
+    for attempt in range(2):
+        try:
+            brief = ("只输出 JSON：{\"title\": \"<标题>\"}，不要任何其他文字"
+                     if attempt == 0 else
+                     "上次没有输出 title 字段。必须严格只输出 "
+                     "JSON：{\"title\": \"<12字以内标题>\"}，禁止其他内容")
+            art = script_adapter.generate(
+                query=f"为这个视频故事起一个 12 字以内的标题：{query}",
+                template={"brief": brief, "segments": 1},
+                workdir=workdir)
+            title = str((art.payload or {}).get("title", "")).strip()
+            if title:
+                exp.save_artifact("title", art, name="title")
+                exp.set_meta("title", title[:20])
+                return title[:20]
+        except Exception:
+            pass
+    return ""
+
+
 def run_task(cfg: dict, query: str, output: str,
              resume: str | None = None, label: str | None = None,
              adapters_cache: dict | None = None) -> tuple[Path, Path]:
@@ -41,7 +68,16 @@ def run_task(cfg: dict, query: str, output: str,
         exp.bind_label(label)
     exp.snapshot_config(cfg)   # 冻结有效配置进实验目录：可重建 + 续跑守卫
     director = SegmentDirector(exp, cfg, adapters_cache=adapters_cache)
-    final = director.run(query)
+
+    def attach_title() -> None:
+        # 标题在 finalize 之前挂入（finalize 落盘后 set_meta 不再持久化）
+        if exp.manifest.get("title"):
+            return
+        title = _generate_run_title(director.script_adapter, query, exp)
+        if title:
+            print(f"  标题: {title}")
+
+    final = director.run(query, before_finalize=attach_title)
     return final, exp.root
 
 

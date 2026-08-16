@@ -90,6 +90,7 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
             "bench_cell": manifest.get("bench_cell"),
             "chain_mode": manifest.get("chain_mode"),
             "query": manifest.get("query"),
+            "title": manifest.get("title"),
             "models": models,
             "judge_adapters": judge_adapters,
             "created_at": manifest.get("created_at"),
@@ -111,16 +112,21 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
 
 
 def render_html(runs: List[Dict[str, Any]], out: Path) -> Path:
+    import html as _html
     has_cell = any(r.get("bench_cell") for r in runs)
     cell_header = "<th>Bench 格</th>" if has_cell else ""
+    has_title = any(r.get("title") for r in runs)
+    title_header = "<th>标题</th>" if has_title else ""
     rows = ""
     for r in runs:
         cell = f"<td>{r['bench_cell']}</td>" if has_cell else ""
+        title = f"<td>{_html.escape(str(r.get('title') or '-'))}</td>" if has_title else ""
         score_cells = "".join(
             f"<td>{k}<br><b>{v}</b></td>" for k, v in r.get("scores", {}).items())
         rows += f"""
         <tr>
           <td>{r['run_id']}</td>
+          {title}
           {cell}
           <td>{r['created_at']}</td>
           <td>{r['total_elapsed_s'] / 60:.1f} min</td>
@@ -141,7 +147,7 @@ th {{ background: #f5f5f5; }}
 <h2>VidHarness 实验对比</h2>
 <p>生成时间：<span id="t"></span>　实验数：{len(runs)}</p>
 <table>
-<tr><th>Run</th>{cell_header}<th>创建时间</th><th>总耗时</th><th>API 成本</th><th>通过率</th><th>重试</th><th>各维度均分</th><th>产物</th></tr>
+<tr><th>Run</th>{title_header}{cell_header}<th>创建时间</th><th>总耗时</th><th>API 成本</th><th>通过率</th><th>重试</th><th>各维度均分</th><th>产物</th></tr>
 {rows}
 </table>
 <script>document.getElementById('t').textContent = new Date().toLocaleString();</script>
@@ -192,6 +198,7 @@ def render_run_html(run_dir: Path, out: Path) -> Path:
     # ---- 概览 ----
     summary = "".join(kv(k, v) for k, v in [
         ("run_id", manifest.get("run_id")),
+        ("title", manifest.get("title")),
         ("query", manifest.get("query")),
         ("bench_cell", manifest.get("bench_cell")),
         ("chain_mode", manifest.get("chain_mode")),
