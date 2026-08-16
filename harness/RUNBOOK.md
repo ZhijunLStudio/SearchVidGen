@@ -39,14 +39,14 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # 故事短片（默认 none 衔接 / t2va 双卡 4,6）
 python -m vidharness.cli run tasks/story.yaml --query "..." --output experiments
 
-# 断点续跑
+# 断点续跑（要求与首次运行完全相同的配置；config.yaml 快照守卫会拒绝混跑）
 python -m vidharness.cli run tasks/story.yaml --query "..." --output experiments --resume <run_id>
 
 # ref2va int8（单卡，需 h3int8 环境 + ffmpeg PATH）
 export PATH=/data/lizhijun/anaconda3/envs/h3int8/bin:/data/lizhijun/anaconda3/envs/torch/bin:$PATH
 python -m vidharness.cli run tasks/bench_chain_ref.yaml --query "..." --output experiments
 
-# 报告 / 对比
+# 报告 / 对比（compare_chains 从每个 run 的 config.yaml 快照读衔接模式）
 python -m vidharness.cli report story_short --output experiments
 python scripts/compare_chains.py experiments/story_short
 python scripts/collect_evidence.py experiments/story_short/<run_id>
@@ -55,13 +55,25 @@ python scripts/collect_evidence.py experiments/story_short/<run_id>
 python -m pytest tests/ -q
 ```
 
+每个 run 目录包含：manifest.json（元信息/成本/重试）+ config.yaml（有效配置快照）+
+artifacts/（产物，.meta.json 含完整输入）+ eval/（评测明细）。
+
 ## 关键参数（tasks/*.yaml）
 
 - `variant`: t2va（纯文本）/ fl2va（首尾帧）/ ref2va（参考图，int8 环境）
-- `chain_mode`: none（默认，E8 实证）/ hard（冻结帧，已弃用）/ ref（参考软衔接）
+- `chain_mode`: none（默认，E8 实证）/ hard（冻结帧，已弃用）/ ref（参考软衔接）。
+  配置校验拒绝其他值；能力校验按此推导要求（hard→first_last_frame、ref→refs）
+- `generator.adapter` 可用 `generator.fallback`（params.chain 降级链）或
+  `generator.route: {audio: true, ...}`（按能力路由，多候选时报错要求显式指定）
 - `steps`: 去噪步数（30 约 36s/步双卡、75-125s/步单卡 int8）
 - `disable_thinking`: true（防 token 燃烧；如需更严谨评分可 false）
-- `min_score`: 评测通过阈值（默认 6）
+- `min_score`/`weight`: 评测阈值与权重（由消费者统一结算，改配置即生效）
+- `cost.gpu_price_usd_per_hour`: 本地 GPU 成本口径（默认 1.2）
+
+## 决策记录
+
+设计决策与弃选方案见 `harness/.agents/notes/`（Agent Notes，格式见其 README.md）；
+实验证据（E 系列）见 harness/README.md「实验发现」。
 
 ## 已知约束
 

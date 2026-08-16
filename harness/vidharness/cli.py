@@ -40,7 +40,14 @@ def cmd_report(args):
 def cmd_run(args):
     load_builtin_adapters()
     cfg = yaml.safe_load(Path(args.task).read_text(encoding="utf-8"))
+    # 配置校验（fail loud）：拼错的键/策略在启动时拒绝，而不是静默吞默认值
+    from .core.config import validate_task
+    validate_task(cfg)
     task = cfg.get("task_name", "story")
+    if args.brief:
+        cfg["brief"] = args.brief
+    if args.segments:
+        cfg["segments"] = args.segments
     if args.resume:
         exp = Experiment(task=task, base_dir=Path(args.output), run_id=args.resume)
         if not exp.root.exists():
@@ -48,10 +55,9 @@ def cmd_run(args):
         print(f"♻️ 断点续跑: {exp.root}")
     else:
         exp = Experiment(task=task, base_dir=Path(args.output))
-    if args.brief:
-        cfg["brief"] = args.brief
-    if args.segments:
-        cfg["segments"] = args.segments
+    exp.bind_query(args.query)   # 记录实验变量 + 续跑一致性守卫
+    # 冻结有效配置进实验目录：可重建 + 续跑一致性守卫
+    exp.snapshot_config(cfg)
     director = SegmentDirector(exp, cfg)
     final = director.run(args.query)
     print(json.dumps({"final": str(final), "experiment": str(exp.root)},

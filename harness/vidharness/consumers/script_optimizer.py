@@ -9,14 +9,16 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any, Dict, List
 
 from ..seams import JudgeCriteria
+from .judge_loop import run_judge
 
 
 class ScriptOptimizer:
     def __init__(self, script_adapter, judge, memory, exp, rounds: int = 2,
-                 candidates: int = 2, target_score: float = 7.5):
+                 candidates: int = 2, target_score: float = 7.5, segments: int = 4):
         self.script_adapter = script_adapter
         self.judge = judge
         self.memory = memory
@@ -24,12 +26,14 @@ class ScriptOptimizer:
         self.rounds = rounds
         self.candidates = candidates
         self.target_score = target_score
+        self.segments = segments
 
     def _judge_script(self, art, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
-        q = {c.name: f"{c.question}\n\n剧本内容：\n{json.dumps(art.payload, ensure_ascii=False)}"
-             for c in criteria}
-        verdict_art = self.judge.judge(media=[], criteria=q, workdir=self.exp.eval_dir)
-        return verdict_art.payload
+        # 把剧本内容嵌入问题（完整规格随协议传递，权重/阈值不丢失）
+        embedded = [replace(c, question=f"{c.question}\n\n剧本内容：\n"
+                                        f"{json.dumps(art.payload, ensure_ascii=False)}")
+                    for c in criteria]
+        return run_judge(self.judge, [], embedded, self.exp.eval_dir)
 
     def optimize(self, query: str, brief: str, criteria: List[JudgeCriteria],
                  workdir) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -44,7 +48,7 @@ class ScriptOptimizer:
             for k in range(self.candidates):
                 template = {
                     "brief": brief,
-                    "segments": int(self.exp.manifest.get("segments", 4)),
+                    "segments": self.segments,
                     "experience": self.memory.experience_lines(),
                 }
                 art = self.script_adapter.generate(

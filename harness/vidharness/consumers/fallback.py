@@ -8,23 +8,25 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..core.registry import resolve
+from ..core.registry import instantiate, resolve
 from ..seams import GenRequest
 
 
 class FallbackGenerator:
     """MediaGenerator 包装器：providers 按序尝试。
 
-    用法（任务 YAML）：
+    用法（任务 YAML，注意注册名是 generator.fallback）：
       generator:
-        adapter: fallback
+        adapter: generator.fallback
         params:
           chain: [generator.minimax-h3-local, generator.minimax-h3-api]
+          providers: {generator.minimax-h3-api: {resolution: 768P}}
     """
 
     def __init__(self, chain: List[str], providers: dict | None = None):
         providers = providers or {}
-        self.chain = [resolve(name)(**providers.get(name, {})) for name in chain]
+        self.chain = [instantiate(name, providers.get(name, {}), context="fallback")
+                      for name in chain]
         self.name = f"fallback[{','.join(chain)}]"
         # 能力 = 各档的并集（取最优值）
         caps: Dict[str, Any] = {}

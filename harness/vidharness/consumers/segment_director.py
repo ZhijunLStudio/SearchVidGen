@@ -16,27 +16,47 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..core.experiment import Experiment, Timer
-from .judge_loop import run_with_judge
+from .judge_loop import run_with_judge, run_judge
 from ..seams import GenRequest, JudgeCriteria, MediaGenerator, RetryPolicy
-from ..core.registry import check_capabilities, resolve
+from ..core.registry import check_capabilities, instantiate, resolve
 
 
 class SegmentDirector:
     def __init__(self, exp: Experiment, config: Dict[str, Any]):
         self.exp = exp
         self.cfg = config
-        self.script_adapter = resolve(config["pipeline"]["script"]["adapter"])(
-            **config["pipeline"]["script"].get("params", {}))
-        gen_name = config["pipeline"]["generator"]["adapter"]
-        self.generator: MediaGenerator = resolve(gen_name)(
-            **config["pipeline"]["generator"].get("params", {}))
-        # 能力校验（fail loud）：任务要求超出提供者能力直接报错
-        required = {"first_last_frame": True}
+        # 衔接策略：hard=首帧硬条件(fl2va) / ref=末帧作参考图(ref2va) / none=无衔接
+        self.chain_mode = config.get("pipeline", {}).get("context", {}).get("chain_mode", "none")
+
+        self.script_adapter = instantiate(
+            config["pipeline"]["script"]["adapter"],
+            config["pipeline"]["script"].get("params", {}), context="script")
+
+        gen_cfg = config["pipeline"]["generator"]
+        if "route" in gen_cfg:
+            from ..core.registry import resolve_provider
+            gen_name = resolve_provider("generator", gen_cfg["route"], context="generator")
+        else:
+            gen_name = gen_cfg["adapter"]
+        self.generator: MediaGenerator = instantiate(
+            gen_name, gen_cfg.get("params", {}), context="generator")
+
+        # 能力校验（fail loud）：按衔接策略推导真实需求，而非硬编码。
+        # 校验对象是实例（fallback 等合成提供者的能力是实例级并集，类上没有）。
+        # hard 需要首尾帧条件；ref 需要参考图；none 无额外要求。
+        required: Dict[str, Any] = {}
+        if self.chain_mode == "hard":
+            required["first_last_frame"] = True
+        elif self.chain_mode == "ref":
+            required["refs"] = 1
         if config.get("audio_verify"):
             required["audio"] = True
-        caps = check_capabilities(gen_name, required, context="generator")
+        caps = check_capabilities(self.generator, required, context="generator")
         exp.manifest["generator_capabilities"] = caps
-        self.judge = resolve(config["judge"]["adapter"])(**config["judge"].get("params", {}))
+        exp.manifest["chain_mode"] = self.chain_mode
+
+        self.judge = instantiate(config["judge"]["adapter"],
+                                 config["judge"].get("params", {}), context="judge")
         # 经验记忆：环境反馈在此积累，跨任务泛化（无领域模板）
         from ..core.memory import ExperienceMemory
         mem_cfg = config.get("memory", {})
@@ -61,6 +81,7 @@ class SegmentDirector:
                 rounds=int(opt_cfg.get("rounds", 2)),
                 candidates=int(opt_cfg.get("candidates", 2)),
                 target_score=float(opt_cfg.get("target_score", 7.5)),
+                segments=int(self.cfg.get("segments", 4)),
             )
             print(f"   剧本自主优化（{opt.rounds}轮×{opt.candidates}候选，目标≥{opt.target_score}）")
             payload, history = opt.optimize(
@@ -97,13 +118,13 @@ class SegmentDirector:
             last = art
             if not crit:
                 return art.payload
-            # 文本评测：把剧本内容嵌入问题交给裁判
-            q = {c.name: f"{c.question}\n\n剧本内容：\n{_json.dumps(art.payload, ensure_ascii=False)}"
-                 for c in crit}
+            # 文本评测：把剧本内容嵌入问题交给裁判（完整规格随协议传递，权重不丢失）
+            from dataclasses import replace as _replace
+            embedded = [_replace(c, question=f"{c.question}\n\n剧本内容：\n"
+                                            f"{_json.dumps(art.payload, ensure_ascii=False)}")
+                        for c in crit]
             try:
-                verdict_art = self.judge.judge(media=[], criteria=q,
-                                               workdir=self.exp.eval_dir)
-                verdict = verdict_art.payload
+                verdict = run_judge(self.judge, [], embedded, self.exp.eval_dir)
                 rec = {"attempt": attempt, "artifact": str(art.path), **verdict}
                 self.exp.save_eval("script_judge", [rec])
                 feedback = verdict.get("feedback", "")
@@ -129,8 +150,7 @@ class SegmentDirector:
         seg_videos: List[Path] = []
         last_frame: Optional[Path] = None
         anchor_refs = self._anchor_refs()
-        # 衔接策略：hard=首帧硬条件(fl2va) / ref=末帧作参考图(ref2va) / none=无衔接
-        chain_mode = self.cfg.get("pipeline", {}).get("context", {}).get("chain_mode", "hard")
+        chain_mode = self.chain_mode
 
         for i, plan in enumerate(plans):
             name = f"seg{i + 1:02d}"
@@ -170,16 +190,12 @@ class SegmentDirector:
         cross_crit = self._criteria("cross_judge") or [JudgeCriteria(
             name="跨段一致性",
             question="这两帧分别是上一段结尾与下一段开头，请检查：人物外貌/服装是否一致、场景是否自然衔接。不一致请说明差异。")]
-        crit_dict = {c.name: c.question for c in cross_crit}
         for i in range(1, len(videos)):
             prev_last = self._extract_last_frame(videos[i - 1], self.exp)
             cur_first = self._extract_frame(videos[i], 0.0, self.exp)
-            art = self.judge.judge(
-                media=[prev_last, cur_first],
-                criteria=crit_dict,
-                workdir=self.exp.eval_dir,
-            )
-            rec = {"segment_pair": [i, i + 1], **art.payload}
+            verdict = run_judge(self.judge, [prev_last, cur_first],
+                                cross_crit, self.exp.eval_dir)
+            rec = {"segment_pair": [i, i + 1], **verdict}
             records.append(rec)
         self.exp.save_eval("cross_consistency", records)
         return {"checked": True, "records": records}
@@ -216,7 +232,8 @@ class SegmentDirector:
             narrations = [p.get("narration", "") for p in script.get("segments", [])]
             verify_film(videos, narrations, audio_cfg["adapter"], self.exp)
 
-        self.exp.finalize()
+        self.exp.finalize(gpu_price_usd_per_hour=float(
+            (self.cfg.get("cost") or {}).get("gpu_price_usd_per_hour", 1.2)))
         print(f"\n✅ 完成: {final}")
         print(f"   实验目录: {self.exp.root}")
         print(f"   总耗时: {self.exp.manifest['total_elapsed_s']:.0f}s | "

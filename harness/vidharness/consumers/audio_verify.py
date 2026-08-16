@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core.registry import resolve
+from ..core.registry import instantiate, resolve
 from ..seams import Artifact
 
 
@@ -33,7 +33,7 @@ def verify_segment_audio(video: Path, expected_text: str, transcriber: Any,
     """单段音频验证：转写 → 与期望旁白比对 → 记录评测。"""
     trans_obj = resolve(transcriber) if isinstance(transcriber, str) else transcriber
     if isinstance(trans_obj, type):
-        trans_obj = trans_obj()          # 提供者注册的是类，实例化
+        trans_obj = instantiate(transcriber, context="transcribe")
     art: Artifact = trans_obj.transcribe(video, workdir=exp.artifacts_dir / stage)
     payload = art.payload
     exp.save_artifact(stage, art, name=video.stem)

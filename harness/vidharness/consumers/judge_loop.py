@@ -2,20 +2,28 @@
 
 这是 harness 与普通流水线的本质区别 —— 质量验证是一等公民，
 而不是"生成完就交付"。
+
+职责边界（对齐 deepseek-harness 的"显式 > 隐式"）：
+- parse_scores：从 judge 文本回复提取原始评分（解析归提供者侧能力，输入兼容性由
+  规格里的 aliases 兜底）。
+- finalize_verdict：加权/阈值判定。评测策略（weight/min_score）是任务配置的
+  拥有物，由消费者统一结算 —— 提供者不得替消费者算总分，否则 YAML 的权重
+  在协议传递中被静默丢弃（2026-08-16 修复的 Bug#1）。
 """
 from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..seams import JudgeCriteria, RetryPolicy
+from ..seams import JudgeCriteria, RetryPolicy, criteria_to_spec
 from ..core.registry import resolve
 
 
-def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
-    """从 judge 文本回复中提取结构化评分。
+def parse_scores(text: str, criteria: List[JudgeCriteria]) -> Tuple[Dict[str, float], str]:
+    """从 judge 文本回复中提取原始评分（不做加权/阈值判定）。
 
-    优先解析 JSON；否则用正则匹配 "维度名: 分数" 或 "score: N" 模式。
+    返回 (scores, feedback)。优先解析 JSON；否则用正则匹配
+    "维度名: 分数" 或 "score: N" 模式（别名兜底）。
     """
     text = text.strip()
     # 1) 尝试整段 JSON
@@ -32,7 +40,7 @@ def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, An
                         scores[c.name] = float(v)
                 feedback = data.get("feedback", "") or ""
                 if scores:
-                    return _finalize(scores, feedback, criteria)
+                    return scores, feedback
         except Exception:
             pass
     # 2) 正则兜底："维度名[:：]\s*(\d+(\.\d+)?)"；支持别名（如"一致性"匹配"与指令一致性"）
@@ -54,10 +62,15 @@ def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, An
         m = re.search(r"(\d+(?:\.\d+)?)\s*(?:/10|分)", text)
         if m and criteria:
             scores[criteria[0].name] = float(m.group(1))
-    return _finalize(scores, feedback, criteria)
+    return scores, feedback
 
 
-def _finalize(scores: Dict[str, float], feedback: str, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
+def finalize_verdict(scores: Dict[str, float], feedback: str,
+                     criteria: List[JudgeCriteria]) -> Dict[str, Any]:
+    """加权结算与阈值判定 —— 评测策略的唯一归属点。
+
+    缺失维度计 0 分并判未通过（宁严勿松：解析失败不得静默通过）。
+    """
     total, weight_sum = 0.0, 0.0
     passed = True
     for c in criteria:
@@ -76,6 +89,24 @@ def _finalize(scores: Dict[str, float], feedback: str, criteria: List[JudgeCrite
         "passed": passed,
         "feedback": feedback,
     }
+
+
+def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
+    """兼容封装：parse_scores + finalize_verdict（旧调用点/外部脚本使用）。"""
+    scores, feedback = parse_scores(text, criteria)
+    return finalize_verdict(scores, feedback, criteria)
+
+
+def run_judge(judge: Any, media, criteria: List[JudgeCriteria],
+              workdir) -> Dict[str, Any]:
+    """统一评测调用：传完整规格（含权重/阈值/别名），回来统一 finalize。
+
+    所有消费者（judge_loop / script / cross_consistency / optimizer）
+    都经此结算，保证评测策略只在一处生效。
+    """
+    art = judge.judge(media=media, criteria=criteria_to_spec(criteria), workdir=workdir)
+    payload = art.payload or {}
+    return finalize_verdict(payload.get("scores", {}), payload.get("feedback", ""), criteria)
 
 
 def run_with_judge(
@@ -125,12 +156,7 @@ def run_with_judge(
         media = media_collector(last)
         if not media:
             return last, history
-        res_artifact = judge_obj.judge(
-            media=media,
-            criteria={c.name: c.question for c in criteria},
-            workdir=exp.eval_dir,
-        )
-        verdict = res_artifact.payload
+        verdict = run_judge(judge_obj, media, criteria, exp.eval_dir)
         record = {
             "attempt": attempt,
             "artifact": str(last.path),

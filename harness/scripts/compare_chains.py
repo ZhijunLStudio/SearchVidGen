@@ -1,11 +1,17 @@
-"""衔接策略对比分析：聚合 hard/none/ref 三个实验的评测证据。
+"""衔接策略对比分析：聚合不同 chain_mode 实验的评测证据。
 
 用法：python scripts/compare_chains.py experiments/story_short
 输出：链式策略对比表（跨段一致性/叙事推进/段均分/旁白验证/成本耗时）
+
+衔接模式从每个 run 的 config.yaml 快照读取（2026-08-16 起每次运行都会
+冻结有效配置到实验目录）；没有快照的旧实验归入 "?"（不再硬编码 run_id）。
 """
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
+
+import yaml
 
 
 def load_run(run_dir: Path) -> dict:
@@ -20,15 +26,18 @@ def load_run(run_dir: Path) -> dict:
 
 
 def chain_mode_of(run_dir: Path) -> str:
-    """从任务配置推断：检查 run 目录内是否存了 config（未存则按规则猜）。"""
+    """从 run 目录内的配置快照读取 chain_mode；无快照则返回 "?"。"""
     cfg_file = run_dir / "config.yaml"
     if cfg_file.exists():
-        return json.loads(cfg_file.read_text()).get("pipeline", {}).get("context", {}).get("chain_mode", "?")
-    # 目录名/时间推断不了 —— 由调用方传入映射
+        try:
+            cfg = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
+            return str(cfg.get("pipeline", {}).get("context", {}).get("chain_mode", "?"))
+        except Exception:
+            return "?"
     return "?"
 
 
-def summarize(run_dir: Path, mode: str) -> dict:
+def summarize(run_dir: Path) -> dict:
     d = load_run(run_dir)
     evals = d["evals"]
     seg = evals.get("segments", [])
@@ -45,7 +54,7 @@ def summarize(run_dir: Path, mode: str) -> dict:
         return round(sum(xs) / len(xs), 2) if xs else None
 
     return {
-        "mode": mode,
+        "mode": chain_mode_of(run_dir),
         "run_id": run_dir.name,
         "segments": len(seg),
         "seg_avg_score": mean(seg_scores),
@@ -60,37 +69,39 @@ def summarize(run_dir: Path, mode: str) -> dict:
 
 def main(base: str):
     base = Path(base)
-    # 模式 → run 目录映射：按创建顺序推断（hard 最早、none 次之、ref 最新）
-    runs = sorted([d for d in base.iterdir() if d.is_dir()], key=lambda d: d.name)
-    mapping = [
-        ("hard", "20260815_000309_b2ddfd"),   # 实验二（hard）
-        ("none", "20260815_035745_dc6795"),   # 实验三（none）
-        ("ref",  None),                        # 实验四（ref，运行中）
-    ]
-    rows = []
-    for mode, rid in mapping:
-        run_dir = None
-        if rid:
-            run_dir = base / rid
-        else:
-            cands = [d for d in runs if d.name.startswith("20260815_05")]
-            run_dir = sorted(cands)[-1] if cands else None
-        if run_dir and run_dir.exists():
-            rows.append(summarize(run_dir, mode))
-        else:
-            rows.append({"mode": mode, "run_id": None, "note": "未找到/未完成"})
+    if not base.exists():
+        print(f"未找到实验目录: {base}")
+        sys.exit(1)
 
-    print(json.dumps(rows, ensure_ascii=False, indent=2))
-    # markdown 表
-    print("\n| 模式 | 段均分 | 跨段一致性 | 叙事推进 | 旁白验证 | GPU小时 |")
-    print("|---|---|---|---|---|---|")
-    for r in rows:
-        if r.get("run_id") is None:
-            print(f"| {r['mode']} | - | - | - | - | - |")
+    by_mode = defaultdict(list)
+    for d in sorted(base.iterdir()):
+        if not d.is_dir():
             continue
-        audio = f"{r['audio_narration_pass']}/{r['audio_total']}" if r["audio_total"] else "-"
-        print(f"| {r['mode']} | {r['seg_avg_score']} | {r['cross_consistency']} | "
-              f"{r['narrative_progression']} | {audio} | {r['gpu_hours']} |")
+        row = summarize(d)
+        by_mode[row["mode"]].append(row)
+
+    rows = [r for rs in by_mode.values() for r in rs]
+    print(json.dumps(rows, ensure_ascii=False, indent=2))
+
+    # markdown 表（每模式多 run 时取均值）
+    print("\n| 模式 | runs | 段均分 | 跨段一致性 | 叙事推进 | 旁白验证 | GPU小时 |")
+    print("|---|---|---|---|---|---|---|")
+    for mode in sorted(by_mode, key=lambda m: (m == "?", m)):
+        rs = by_mode[mode]
+
+        def mean(vals):
+            vals = [v for v in vals if v is not None]
+            return round(sum(vals) / len(vals), 2) if vals else None
+
+        audio_pass = sum(r["audio_narration_pass"] or 0 for r in rs)
+        audio_total = sum(r["audio_total"] or 0 for r in rs)
+        audio = f"{audio_pass}/{audio_total}" if audio_total else "-"
+        print(f"| {mode} | {len(rs)} | {mean([r['seg_avg_score'] for r in rs])} | "
+              f"{mean([r['cross_consistency'] for r in rs])} | "
+              f"{mean([r['narrative_progression'] for r in rs])} | {audio} | "
+              f"{mean([r['gpu_hours'] for r in rs])} |")
+    if "?" in by_mode:
+        print("\n注：'?' = 旧实验缺少配置快照（2026-08-16 前的 run 未冻结 config.yaml）。")
 
 
 if __name__ == "__main__":

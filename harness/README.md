@@ -36,9 +36,13 @@ harness/vidharness/
 │   ├── segment_director.py  #   剧本→逐段生成(首尾帧衔接)→跨段评测→总装
 │   └── assemble.py          #   FFmpeg 拼接 + 字幕烧录
 ├── core/
-│   ├── registry.py          # 注册表（@register，能力校验 fail loud）
-│   └── experiment.py        # 实验：manifest/产物/缓存/断点续跑/成本
+│   ├── registry.py          # 注册表（@register 能力schema校验 / instantiate 参数校验 / 按能力路由）
+│   ├── config.py            # 任务配置 schema 校验（fail loud：拼错键拒绝启动）
+│   ├── experiment.py        # 实验：manifest/产物/缓存/断点续跑/配置快照/成本
+│   ├── memory.py            # 经验记忆（环境反馈积累）
+│   └── report.py            # 实验对比报告
 ├── tasks/story.yaml         # 组合配置（对应 cordis.yml：选提供者/评测维度/重试）
+├── .agents/notes/           # 决策记忆（Agent Notes：为什么这样做、否决了什么）
 └── cli.py
 ```
 
@@ -52,6 +56,14 @@ harness/vidharness/
 3. **评测闭环**：逐段评测（指令一致/质量缺陷/音画同步）+ 跨段评测（角色/场景延续）。
    评分 < 阈值 → judge 反馈注入下一次生成指令 → 自动重试。
 4. **实验即产物**：manifest.json 记录模型版本/参数/seed/耗时/成本；同任务可跑多模型对比。
+   每次运行把**有效任务配置冻结**为 run 目录内 config.yaml（可重建 + 续跑一致性守卫）。
+
+## 决策记忆（Agent Notes）
+
+`harness/.agents/notes/` 存放设计决策：代码与 README 无法承载的**为什么**与
+**放弃了什么**（移植自 deepseek-harness 的 Agent Notes 机制，格式见
+[.agents/notes/README.md](.agents/notes/README.md)）。实验证据（E 系列）支撑决策，
+决策笔记记录理由；经验记忆（_memory.jsonl）是运行时环境反馈，三者分工不同。
 
 ## 当前部署（本机实验环境）
 
@@ -64,10 +76,13 @@ harness/vidharness/
 
 ## 路线（实验驱动）
 
-1. ✅ 协议/注册/实验管理/Judge 闭环/SegmentDirector（本轮）
-2. ⏳ H3-Base 本地跑通 + DeepSeek 剧本 + 评测闭环，第一个端到端实验（本轮）
-3. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
-4. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+1. ✅ 协议/注册/实验管理/Judge 闭环/SegmentDirector（8-14）
+2. ✅ H3-Base 本地端到端 + 三模式衔接对比（E1-E10，8-15）
+3. ✅ 范式对齐轮（8-16）：任务配置 fail-loud 校验、能力 schema + 按能力路由、
+   实验配置快照与续跑守卫、评测结算归属消费者（weight/min_score 生效）、
+   成本口径声明化；Bug#1-#4 修复（详见 .agents/notes/implemented/2026-08-16-*）
+4. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
+5. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -151,3 +166,13 @@ Int8WeightOnlyConfig(version=2) 且要求 torch>=2.9，与旧环境 vllm 0.11 �
 
 结论：段间衔接不应做帧级硬约束。默认 none（文本延续）；当有高质量角色/风格参考图时
 ref 是更强的一致化工具（锚点质量决定一致性下限）。
+
+### E11：范式对齐审计发现 4 个静默配置 bug（2026-08-16）
+对照 deepseek-harness 的"显式 > 隐式 / fail loud / 模型可见⟺日志"原则审计发现：
+- Bug#1 评测权重丢失：YAML 的 weight=1.2/min_score=5 在 judge 协议传递中被默认值
+  替换（加权分与阈值判定均与配置不符）；
+- Bug#2 优化器段数读 manifest 幽灵字段（manifest 从未写入 segments）→ 恒为默认 4；
+- Bug#3 能力校验硬编码 first_last_frame，与 chain_mode 无关的提供者被误拒；
+- Bug#4 实验不冻结任务配置，对比脚本只能硬编码 run_id 猜衔接模式。
+全部修复并加回归测试（30 passed），决策沉淀在 .agents/notes/implemented/2026-08-16-*。
+经验：**"配置从产物回读"、"字符串嗅探"、"自由 dict 能力键"是静默 bug 的三类温床**。

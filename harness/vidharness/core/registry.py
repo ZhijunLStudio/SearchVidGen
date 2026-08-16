@@ -1,20 +1,77 @@
-"""适配器注册表。
+"""适配器注册表 —— 对齐 deepseek-harness 的"声明式提供者目录"。
 
 所有模型适配器通过 @register("namespace.name") 登记，
 流水线 YAML 按名字引用 —— 新模型 = 新文件 + 一行注册，核心零改动。
+
+三条 fail-loud 纪律：
+1. 注册时校验 capabilities 键符合所属 seam 的能力 schema（能力词汇是协议，
+   不允许自由发明键 —— 拼错的能力键会静默绕过能力校验）；
+2. instantiate 校验任务配置传给适配器的参数（未知参数/缺必需参数都在最早点报错）；
+3. resolve_provider 按能力路由，多候选时不替用户做决定。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Type, Union
+import inspect
+from typing import Any, Dict, List, Type, Union
 
 _REGISTRY: Dict[str, Any] = {}
 
+# 每 seam 的能力 schema：允许的键 -> 允许的值类型。
+# seam 由适配器名的第一段决定（generator.* / judge.* / script.* / transcribe.*）。
+# 新增能力键必须同时更新此表（协议演进走这里，不走自由 dict）。
+SEAM_CAPABILITY_SCHEMAS: Dict[str, Dict[str, Any]] = {
+    "generator": {
+        "max_duration_s": (int, float),
+        "audio": bool,
+        "refs": (int, float),
+        "first_last_frame": bool,
+        "resolution": str,
+        "backend": str,          # "local" | "api"（成本模型与计费依据）
+    },
+    "judge": {
+        "frame_sampling": bool,
+    },
+    "script": {
+        "language": str,
+        "json_output": bool,
+    },
+    "transcribe": {
+        "language": str,
+        "device": str,
+        "emotion_tags": bool,
+    },
+}
+
+
+def _validate_capability_schema(name: str, caps: Dict[str, Any]) -> None:
+    """注册时校验能力键与类型（fail loud：拼错能力键 = 静默绕过校验）。"""
+    if not isinstance(caps, dict):
+        raise TypeError(f"adapter '{name}' 的 capabilities 必须是 dict")
+    seam = name.split(".")[0]
+    schema = SEAM_CAPABILITY_SCHEMAS.get(seam)
+    if schema is None:
+        raise ValueError(
+            f"adapter '{name}' 的前缀 '{seam}' 不在已知 seam 中: "
+            f"{sorted(SEAM_CAPABILITY_SCHEMAS)}")
+    for k, v in caps.items():
+        if k not in schema:
+            raise ValueError(
+                f"adapter '{name}' 声明了未知能力键 '{k}'（{seam} seam 允许: "
+                f"{sorted(schema)}）。新能力请先登记 SEAM_CAPABILITY_SCHEMAS。")
+        if not isinstance(v, schema[k]):
+            raise TypeError(
+                f"adapter '{name}' 的能力 '{k}' 类型应为 {schema[k]}, "
+                f"得到 {type(v).__name__}")
+
 
 def register(name: str):
-    """装饰器：注册适配器类/实例。"""
+    """装饰器：注册适配器类/实例，并在注册点校验能力 schema。"""
     def _wrap(obj: Any):
         if name in _REGISTRY:
             raise ValueError(f"adapter '{name}' 已注册")
+        caps = getattr(obj, "capabilities", None)
+        if caps is not None:
+            _validate_capability_schema(name, caps)
         _REGISTRY[name] = obj
         return obj
     return _wrap
@@ -35,9 +92,67 @@ def resolve(adapter: Union[str, Any]) -> Any:
     return adapter
 
 
+def instantiate(name: str, params: Dict[str, Any] | None = None,
+                context: str = "") -> Any:
+    """实例化注册的适配器，并校验任务配置给的参数（fail loud）。
+
+    - 未知参数：报错并列出可接受参数（防 YAML 拼写错误被静默吞掉）；
+    - 缺少无默认值的必需参数：报错。
+    注册的是实例时原样返回。
+    """
+    obj = resolve(name)
+    if not isinstance(obj, type):
+        return obj
+    params = dict(params or {})
+    sig = inspect.signature(obj.__init__)
+    allowed = [p for p in sig.parameters
+               if p not in ("self",) and sig.parameters[p].kind
+               not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
+    has_var_kw = any(sig.parameters[p].kind == inspect.Parameter.VAR_KEYWORD
+                     for p in sig.parameters)
+    if not has_var_kw:
+        for k in params:
+            if k not in allowed:
+                raise RuntimeError(
+                    f"[{context}] 适配器 '{name}' 不接受参数 '{k}'（可接受: {sorted(allowed)}）")
+    missing = [p for p in allowed
+               if sig.parameters[p].default is inspect.Parameter.empty and p not in params]
+    if missing:
+        raise RuntimeError(f"[{context}] 适配器 '{name}' 缺少必需参数: {missing}")
+    return obj(**params)
+
+
+def resolve_provider(seam: str, required: Dict[str, Any], context: str = "") -> str:
+    """按能力路由：从已注册提供者中选出满足 required 的唯一适配器名。
+
+    对应 deepseek-harness 的 provider-routed 模式（请求按能力选择提供者）。
+    多个候选同时满足时拒绝替用户决定（fail loud），要求显式指定 adapter。
+    """
+    candidates = [n for n in _REGISTRY if n == seam or n.startswith(seam + ".")]
+    if not candidates:
+        raise RuntimeError(f"[{context}] 没有注册任何 {seam} 提供者")
+    satisfied: List[str] = []
+    reasons: Dict[str, str] = {}
+    for n in sorted(candidates):
+        try:
+            check_capabilities(n, required)
+            satisfied.append(n)
+        except RuntimeError as e:
+            reasons[n] = str(e)
+    if not satisfied:
+        detail = "; ".join(f"{n}: {r}" for n, r in reasons.items())
+        raise RuntimeError(
+            f"[{context}] 没有 {seam} 提供者满足 {required}。{detail}")
+    if len(satisfied) > 1:
+        raise RuntimeError(
+            f"[{context}] 多个 {seam} 提供者满足 {required}: {satisfied}。"
+            f"请显式指定 adapter（或调整要求缩小范围）。")
+    return satisfied[0]
+
+
 def capabilities(adapter: Union[str, Any]) -> Dict[str, Any]:
     obj = resolve(adapter)
-    # 注册的是类；capabilities 是类属性，直接读，不实例化（实例化需要构造参数）
+    # 类读类属性、实例读实例属性（fallback 等合成提供者的能力是实例级并集）
     return getattr(obj, "capabilities", {})
 
 
@@ -48,18 +163,19 @@ def check_capabilities(adapter: Union[str, Any], required: Dict[str, Any], conte
     布尔要求不支持均报错，不做语义推断。
     """
     caps = capabilities(adapter)
+    display = getattr(resolve(adapter), "name", adapter)
     for k, v in required.items():
         if k not in caps:
             raise RuntimeError(
-                f"[{context}] 提供者 '{adapter}' 未声明能力 '{k}'（已声明: {sorted(caps)})"
+                f"[{context}] 提供者 '{display}' 未声明能力 '{k}'（已声明: {sorted(caps)})"
             )
         if isinstance(v, (int, float)) and isinstance(caps[k], (int, float)) and v > caps[k]:
             raise RuntimeError(
-                f"[{context}] 要求 {k}={v} 超过提供者 '{adapter}' 上限 {caps[k]}"
+                f"[{context}] 要求 {k}={v} 超过提供者 '{display}' 上限 {caps[k]}"
             )
         if isinstance(v, bool) and v and not caps[k]:
             raise RuntimeError(
-                f"[{context}] 任务要求 {k}，但提供者 '{adapter}' 不支持"
+                f"[{context}] 任务要求 {k}，但提供者 '{display}' 不支持"
             )
     return caps
 

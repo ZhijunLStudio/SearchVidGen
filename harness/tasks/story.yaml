@@ -64,3 +64,7 @@ audio_verify:
 memory:
   path: _memory.jsonl
   promote_threshold: 2
+
+# ---- 成本口径（本地产物按 backend=local 声明折算 GPU 成本）----
+cost:
+  gpu_price_usd_per_hour: 1.2

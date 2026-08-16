@@ -205,7 +205,9 @@ class MiniMaxH3Local:
         meta = ArtifactMeta(adapter=self.name, model="MiniMax-H3-Base",
                             version=self.version,
                             params={"variant": self.variant, "duration": req.duration,
-                                    "num_frames": kwargs["num_frames"]},
+                                    "num_frames": kwargs["num_frames"],
+                                    # 可重建：完整提示落盘（对齐"模型可见 ⟺ 日志"）
+                                    "prompt": req.text},
                             seed=self.seed, elapsed_s=time.time() - t0)
         return Artifact(kind="video", path=vid_path, meta=meta)
 

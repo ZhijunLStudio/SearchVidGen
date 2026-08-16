@@ -95,7 +95,8 @@ class OpenAICompatJudge:
             "",
             "评分维度：",
         ]
-        for i, (name, q) in enumerate(criteria.items(), 1):
+        for i, (name, spec_v) in enumerate(criteria.items(), 1):
+            q = spec_v.get("question", "") if isinstance(spec_v, dict) else spec_v
             prompt_lines.append(f"{i}. {name}: {q}")
         prompt_lines += [
             "",
@@ -125,17 +126,20 @@ class OpenAICompatJudge:
         resp = self.client.chat.completions.create(**kwargs)
         out = resp.choices[0].message.content or ""
 
-        from ..consumers.judge_loop import parse_judge_output
-        from ..seams import JudgeCriteria
-        crits = [JudgeCriteria(name=n, question=q) for n, q in criteria.items()]
-        verdict = parse_judge_output(out, crits)
+        from ..seams import spec_to_criteria
+        from ..consumers.judge_loop import parse_scores
+        crits = spec_to_criteria(criteria)
+        scores, feedback = parse_scores(out, crits)
 
+        # 可重建：raw 输出 + 输入规格 + 媒体清单全部落盘（对齐"模型可见⟺日志"）
         path = workdir / f"judge_{int(time.time())}.json"
         path.write_text(json.dumps(
-            {"raw": out, "verdict": verdict, "media": [str(m) for m in media],
+            {"raw": out, "criteria": criteria, "scores": scores, "feedback": feedback,
+             "media": [str(m) for m in media],
              "frames": [str(f) for f in images]},
             ensure_ascii=False, indent=2), encoding="utf-8")
         meta = ArtifactMeta(adapter=self.name, model=self.model,
                             elapsed_s=time.time() - t0,
                             params={"frame_samples": self.frame_samples})
-        return Artifact(kind="scores", path=path, meta=meta, payload=verdict)
+        return Artifact(kind="scores", path=path, meta=meta,
+                        payload={"scores": scores, "feedback": feedback})

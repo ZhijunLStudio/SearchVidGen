@@ -82,7 +82,9 @@ class DeepSeekScriptGenerator:
         meta = ArtifactMeta(
             adapter=self.name, model=resp.model,
             params={"temperature": self.temperature, "max_tokens": self.max_tokens,
-                    "brief": brief, "n_experience": len(experience)},
+                    "brief": brief, "n_experience": len(experience),
+                    # 可重建：完整输入模板落盘（对齐"模型可见 ⟺ 日志"）
+                    "template": template},
             elapsed_s=_t.time() - t0,
             cost_usd=_estimate_cost(resp.usage.prompt_tokens, resp.usage.completion_tokens, self.model),
         )
