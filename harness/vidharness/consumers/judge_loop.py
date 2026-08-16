@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..seams import JudgeCriteria, RetryPolicy, criteria_to_spec
@@ -97,15 +98,42 @@ def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, An
     return finalize_verdict(scores, feedback, criteria)
 
 
+_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
+
+def _media_modalities(media) -> set:
+    """按文件后缀推断评测所需模态。"""
+    needs = set()
+    for m in media:
+        suffix = Path(m).suffix.lower()
+        if suffix in _VIDEO_EXTS:
+            needs.add("video")
+        elif suffix in _IMAGE_EXTS:
+            needs.add("image")
+    return needs
+
+
 def run_judge(judge: Any, media, criteria: List[JudgeCriteria],
               workdir, exp=None) -> Dict[str, Any]:
     """统一评测调用：传完整规格（含权重/阈值/别名），回来统一 finalize。
 
     所有消费者（judge_loop / script / cross_consistency / optimizer）
     都经此结算，保证评测策略只在一处生效。
+
+    模态守卫（孪生适配器暴露的 seam 词汇缺口）：媒体评测要求的模态超出
+    裁判声明的 modalities 时响亮失败——text-only 裁判不得静默假装看过媒体。
     传 exp 时裁判原始输出作为产物存档（artifacts/judge/，经事件流，
     对齐"模型可见 ⟺ 日志"——每次裁判调用可重建）。
     """
+    media = [m for m in (media or []) if m is not None]
+    mods = getattr(judge, "modalities", None)
+    if media and mods:
+        unsupported = _media_modalities(media) - set(mods)
+        if unsupported:
+            raise RuntimeError(
+                f"裁判 '{getattr(judge, 'name', judge)}' 声明仅支持 {mods}，"
+                f"但收到需要 {sorted(unsupported)} 的媒体（不要静默假装看过）")
     art = judge.judge(media=media, criteria=criteria_to_spec(criteria), workdir=workdir)
     if exp is not None:
         exp.save_artifact("judge", art)

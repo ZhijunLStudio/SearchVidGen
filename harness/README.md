@@ -70,6 +70,9 @@ harness/vidharness/
 8. **聚合唯一正源 + leaderboard 基线**：report.collect() 是唯一聚合面
    （全局/分 stage 分数、通过率、模型、成本分解）；`vh leaderboard <task>`
    导出可入库基线（JSON+MD+增量 diff），`vh doctor --all` 全量体检。
+9. **孪生适配器纪律**：judge 缝双实现（vLLM VLM 媒体裁判 + DeepSeek 文本裁判），
+   模态声明可强制——媒体评测配到 text-only 裁判在第一次调用即响亮失败，
+   抽帧失败记错误记录而不是假装评测。
 
 ## 决策记忆（Agent Notes）
 
@@ -83,6 +86,7 @@ harness/vidharness/
 | 角色 | 模型 | 方式 | GPU |
 |---|---|---|---|
 | 剧本 | DeepSeek V4 Flash | API (deepseek-chat) | - |
+| 剧本评审（文本裁判） | DeepSeek V4 Flash | API，judge.deepseek-text（不占 GPU） | - |
 | 生成 | MiniMax H3-Base (2026-07 开源, 33B, 音视频一体) | diffusers@minimax-h3 分支, bf16 | GPU 6 |
 | 评测 | Qwen3.5-27B (多模态, 视频理解) | vLLM OpenAI 兼容服务 :8030 | GPU 7 |
 | 总装 | FFmpeg 9.0 | 拼接+字幕 | - |
@@ -102,8 +106,10 @@ harness/vidharness/
    doctor --all 全量体检、seam 一致性元测试
 7. ✅ 记忆与复盘轮（8-16）：经验记忆提升规则修复（E14，机制曾形同虚设）+
    记录格式版本化；单 run 详情页 vh report --run（概览/配置/产物/评测/事件流）
-8. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（等 API key + 裁判服务就绪）
-9. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+8. ✅ 孪生适配器轮（8-16）：judge 缝第二实现 judge.deepseek-text（真实 API 冒烟
+   通过）+ 模态守卫 + 抽帧失败 fail-visible
+9. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（等 API key + 裁判服务就绪）
+10. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -220,3 +226,12 @@ story.yaml 的 4 格矩阵（步数×温度）全部规划期校验通过，本�
 load_warnings + sources 上限 5。回归测试锁定提升语义。
 经验：**"文档宣称的自学习机制"必须有用真实数据验证的回归测试，否则它就是
 装饰品**。
+
+### E15：judge 缝第二实现落地，孪生适配器暴露词汇缺口（2026-08-16）
+按 DSH 孪生适配器原则为 judge 缝交付第二个真实实现 judge.deepseek-text
+（DeepSeek 官方 API 文本裁判）：真实 API 冒烟通过（7.0 / passed / 反馈可用，
+计费入 meta）。孪生化立即暴露两个单实现时代被掩盖的缺口：①modalities 声明
+不可强制——text-only 裁判误配到媒体评测会静默丢弃媒体；②抽帧失败返回 None
+会被静默传给裁判。修复：run_judge 模态守卫（第一次媒体调用即响亮失败）+
+cross_consistency 抽帧失败记错误记录。
+经验：**单一实现会掩盖协议缺口；第二个真实实现是协议完备性的探测器**。

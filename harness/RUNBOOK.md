@@ -84,6 +84,9 @@ config.yaml（有效配置快照）+ artifacts/（产物，.meta.json 含完整�
 - `min_score`/`weight`: 评测阈值与权重（由消费者统一结算，改配置即生效）
 - `cost.gpu_price_usd_per_hour`: 本地 GPU 成本口径（默认 1.2）
 - params 类型/取值/必需性由适配器的 param_schema 声明目录校验（fail loud）
+- judge 适配器二选一：`judge.openai-compat`（本地 vLLM VLM，图像/视频评测，
+  需 :8030 服务）或 `judge.deepseek-text`（DeepSeek 官方 API，文本评测如
+  script_judge，不占 GPU；误配到媒体评测会被模态守卫响亮拒绝）
 
 ## bench spec（tasks/bench_ablation.yaml 示例）
 

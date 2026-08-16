@@ -873,7 +873,8 @@ class TestEvidenceScript:
 class TestSeamConformance:
     BUILTINS = {
         "generator.fallback", "generator.minimax-h3-api", "generator.minimax-h3-local",
-        "judge.openai-compat", "script.deepseek-v4-flash", "transcribe.sensevoice-small",
+        "judge.openai-compat", "judge.deepseek-text",
+        "script.deepseek-v4-flash", "transcribe.sensevoice-small",
     }
 
     def test_registered_providers_conform_to_seam(self):
@@ -1022,3 +1023,87 @@ class TestRunReport:
         from vidharness.core.report import render_run_html
         with pytest.raises(RuntimeError, match="缺少 manifest"):
             render_run_html(tmp_path, tmp_path / "report.html")
+
+
+class TestDeepSeekTextJudge:
+    """judge 缝的第二实现（孪生适配器）：DeepSeek 官方 API 文本裁判。"""
+
+    def _fake_client(self, monkeypatch, raw='{"叙事完整": 8, "feedback": "pass"}'):
+        from types import SimpleNamespace
+        captured = {}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                captured["init"] = kw
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(content=raw)
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="deepseek-chat",
+                                       usage=SimpleNamespace(
+                                           prompt_tokens=100, completion_tokens=50))
+
+        monkeypatch.setattr("vidharness.providers.judge_deepseek_text.OpenAI", FakeClient)
+        return captured
+
+    def test_judge_text_and_cost(self, tmp_path, monkeypatch):
+        from vidharness.core.registry import instantiate
+        captured = self._fake_client(monkeypatch)
+        judge = instantiate("judge.deepseek-text", {"api_key": "k"}, context="t")
+        crit = criteria_to_spec([JudgeCriteria(name="叙事完整", question="分镜完整吗？", min_score=6)])
+        art = judge.judge(media=[], criteria=crit, workdir=tmp_path)
+        assert art.payload["scores"] == {"叙事完整": 8.0}
+        assert art.payload["feedback"] == "pass"
+        assert art.meta.cost_usd > 0            # deepseek 计费口径
+        prompt = captured["create"]["messages"][0]["content"]
+        assert "叙事完整" in prompt and "分镜完整吗？" in prompt
+        assert art.path.exists()                # 可重建：raw+criteria 落盘
+        assert captured["init"]["api_key"] == "k"
+
+    def test_modality_guard_rejects_media_for_text_judge(self, tmp_path, monkeypatch):
+        from vidharness.core.registry import instantiate
+        from vidharness.consumers.judge_loop import run_judge
+        self._fake_client(monkeypatch)
+        judge = instantiate("judge.deepseek-text", {"api_key": "k"}, context="t")
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6)]
+        with pytest.raises(RuntimeError, match="仅支持"):
+            run_judge(judge, [Path(tmp_path) / "x.mp4"], crit, tmp_path)
+
+    def test_none_media_filtered(self, tmp_path):
+        from vidharness.consumers.judge_loop import run_judge
+
+        class VLMJudge:
+            name = "j"
+            modalities = ["text", "image", "video"]
+            def judge(self, media, criteria, workdir, **kw):
+                self.seen = media
+                return Artifact(kind="scores", path=Path(workdir) / "j.json",
+                                meta=ArtifactMeta(),
+                                payload={"scores": {"与指令一致性": 8.0}, "feedback": "pass"})
+        j = VLMJudge()
+        crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6)]
+        img = tmp_path / "a.jpg"
+        img.write_bytes(b"fake")
+        run_judge(j, [None, img], crit, tmp_path)
+        assert j.seen == [img]                   # None 被过滤，不传给裁判
+
+
+class TestCrossConsistencyFrameFailure:
+    def test_missing_frames_recorded_not_faked(self, tmp_path, monkeypatch):
+        """抽帧失败必须可见：记错误记录，而不是让裁判空评。"""
+        from vidharness.consumers.segment_director import SegmentDirector
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        result = director.stage_cross_consistency(
+            [Path("a.mp4"), Path("b.mp4")], {"segments": []})
+        assert result["checked"] is True
+        assert any("error" in r and "抽帧失败" in r["error"] for r in result["records"])

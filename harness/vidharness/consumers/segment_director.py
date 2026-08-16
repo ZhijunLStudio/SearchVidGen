@@ -194,6 +194,12 @@ class SegmentDirector:
         for i in range(1, len(videos)):
             prev_last = self._extract_last_frame(videos[i - 1], self.exp)
             cur_first = self._extract_frame(videos[i], 0.0, self.exp)
+            # 抽帧失败必须可见：记录错误而不是让裁判空评（fail-visible）
+            if prev_last is None or cur_first is None:
+                rec = {"segment_pair": [i, i + 1],
+                       "error": f"抽帧失败: last={prev_last}, first={cur_first}"}
+                records.append(rec)
+                continue
             verdict = run_judge(self.judge, [prev_last, cur_first],
                                 cross_crit, self.exp.artifacts_dir / "judge",
                                 exp=self.exp)
