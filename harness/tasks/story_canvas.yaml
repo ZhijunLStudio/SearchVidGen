@@ -1,0 +1,35 @@
+# 画布验证任务（Bug#6 证据）：1 段 1:1，验证双卡 t2va 画布参数真正生效
+task_name: story_canvas
+segments: 1
+
+pipeline:
+  script:
+    adapter: script.deepseek-v4-flash
+    params: {model: deepseek-chat, temperature: 0.9}
+  generator:
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "4,6"
+      variant: t2va
+      steps: 19
+      seed: 20260816
+  context:
+    chain_mode: none
+    ratio: "1:1"
+    anchor_refs: []
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 2
+    disable_thinking: true
+
+memory:
+  path: _memory.jsonl
+  promote_threshold: 2
+
+cost:
+  gpu_price_usd_per_hour: 1.2

@@ -27,7 +27,7 @@ TASK_KEYS = {
     "audio_verify", "memory", "cost",
 }
 PIPELINE_KEYS = {"script", "generator", "context"}
-CONTEXT_KEYS = {"chain_mode", "anchor_refs"}
+CONTEXT_KEYS = {"chain_mode", "anchor_refs", "ratio"}
 
 # 允许 adapter / route 二选一的组件块
 _ADAPTER_BLOCK_KEYS = ("adapter", "params", "route")
@@ -119,6 +119,8 @@ def validate_task(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 f"（允许: {list(CHAIN_MODES)}；hard 已实测产生冻结帧，见 E3/E8）")
     if "anchor_refs" in ctx:
         _expect_type(ctx["anchor_refs"], "pipeline.context.anchor_refs", list)
+    if "ratio" in ctx:
+        _expect_type(ctx["ratio"], "pipeline.context.ratio", str)
 
     _check_adapter_block(cfg.get("judge", {}), "judge", extra_allowed=("stages",))
     # 阶段级裁判路由（judge.stages：某阶段覆盖默认裁判，如 script_judge→text-only）

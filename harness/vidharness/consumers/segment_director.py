@@ -178,7 +178,9 @@ class SegmentDirector:
                 text=plan.get("video_prompt", plan.get("text", "")),
                 refs=anchor_refs,
                 duration=plan.get("duration", self._default_duration()),
-                ratio=plan.get("ratio", self.cfg.get("pipeline", {}).get("generator", {}).get("params", {}).get("ratio", "16:9")),
+                # ratio 是任务上下文（pipeline.context），不是适配器参数
+                ratio=plan.get("ratio", self.cfg.get("pipeline", {}).get(
+                    "context", {}).get("ratio", "16:9")),
             )
             if last_frame is not None:
                 if chain_mode == "hard":
@@ -294,35 +296,9 @@ class SegmentDirector:
 
     @staticmethod
     def _extract_frame(video: Path, t: float, exp: Experiment) -> Optional[Path]:
-        from .tools import require_ffmpeg
-        require_ffmpeg()
-        out = exp.artifacts_dir / "frames"
-        out.mkdir(exist_ok=True)
-        dst = out / f"{video.stem}_t{t:.2f}.jpg"
-        if dst.exists():
-            return dst
-        import subprocess
-        r = subprocess.run(["ffmpeg", "-y", "-ss", str(t), "-i", str(video),
-                            "-frames:v", "1", str(dst)], capture_output=True)
-        return dst if dst.exists() else None
+        from .tools import extract_frame
+        return extract_frame(video, t, exp.artifacts_dir / "frames")
 
     def _extract_last_frame(self, video: Path, exp: Experiment) -> Optional[Path]:
-        from .tools import require_ffmpeg, require_ffprobe
-        require_ffmpeg()
-        require_ffprobe()
-        out = exp.artifacts_dir / "frames"
-        out.mkdir(exist_ok=True)
-        dst = out / f"{video.stem}_last.jpg"
-        if dst.exists():
-            return dst
-        import subprocess
-        dur = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(video)], capture_output=True, text=True).stdout.strip()
-        try:
-            t = max(0.0, float(dur) - 0.5)
-        except ValueError:
-            t = 0.0
-        r = subprocess.run(["ffmpeg", "-y", "-ss", str(t), "-i", str(video),
-                            "-frames:v", "1", str(dst)], capture_output=True)
-        return dst if dst.exists() else None
+        from .tools import extract_last_frame
+        return extract_last_frame(video, exp.artifacts_dir / "frames")

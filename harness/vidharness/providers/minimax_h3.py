@@ -27,6 +27,27 @@ RATIO_CANVAS = {
 }
 
 
+def split_dual_card_kwargs(variant: str, kwargs: Dict[str, Any]):
+    """双卡两段式的参数拆分（2026-08-16 Bug#6 修复，返回 (cond, rest)）。
+
+    - t2va：条件侧只吃 prompt；height/width/num_frames 由生成侧的
+      PrepareLayoutStep 消费——传给条件侧会被 ignored+警告，画布静默回落到
+      模型默认 16:9（E16 的 1344×768 正是默认值巧合）。
+    - fl2va/ref2va：条件侧独占 references/height/width（参考编码在
+      text_encoder 内），num_frames 两侧共享（视频参考归一化，E6）；
+      与修复前的行为完全一致。
+    """
+    kwargs = dict(kwargs)
+    cond = {"prompt": kwargs.pop("prompt")}
+    if variant in ("fl2va", "ref2va"):
+        for k in ("references", "height", "width"):
+            if k in kwargs:
+                cond[k] = kwargs.pop(k)
+        if "num_frames" in kwargs:
+            cond["num_frames"] = kwargs["num_frames"]
+    return cond, kwargs
+
+
 # ==========================================================================
 # 本地 H3-Base（diffusers）
 # ==========================================================================
@@ -189,17 +210,12 @@ class MiniMaxH3Local:
             kwargs["num_inference_steps"] = self.steps
 
         if self._pipe is not None and isinstance(self._pipe, tuple):
-            # 双卡两段式：先条件编码，再生成
+            # 双卡两段式：先条件编码，再生成（拆分口径见 split_dual_card_kwargs）
             conditioner, rest = self._pipe
-            cond_kwargs = {"prompt": kwargs.pop("prompt")}
-            for k in ("references", "height", "width"):   # ref2va 条件侧输入
-                if k in kwargs:
-                    cond_kwargs[k] = kwargs.pop(k)
-            if "num_frames" in kwargs:                    # before_encode 也需 num_frames（两侧共享）
-                cond_kwargs["num_frames"] = kwargs["num_frames"]
+            cond_kwargs, rest_kwargs = split_dual_card_kwargs(self.variant, kwargs)
             state = conditioner(**cond_kwargs)
             results = rest(state=state, output_type="pt",
-                           output=["videos", "audio", "sampling_rate"], **kwargs)
+                           output=["videos", "audio", "sampling_rate"], **rest_kwargs)
         else:
             results = self._pipe(output_type="pt",
                                  output=["videos", "audio", "sampling_rate"], **kwargs)

@@ -1306,3 +1306,58 @@ class TestPerStageJudgeRouting:
         from vidharness.consumers.segment_director import SegmentDirector
         d = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
         assert all(j.name == "judge.cap-test" for j in d.judges.values())
+
+
+class TestDualCardKwargsSplit:
+    """Bug#6 回归：双卡参数拆分——t2va 画布必须走生成侧。"""
+
+    def test_t2va_canvas_goes_to_rest(self):
+        from vidharness.providers.minimax_h3 import split_dual_card_kwargs
+        kw = {"prompt": "p", "height": 768, "width": 768, "num_frames": 120}
+        cond, rest = split_dual_card_kwargs("t2va", kw)
+        assert cond == {"prompt": "p"}
+        assert rest == {"height": 768, "width": 768, "num_frames": 120}
+        assert kw == {"prompt": "p", "height": 768, "width": 768, "num_frames": 120}  # 原 dict 不变
+
+    def test_ref2va_matches_legacy_split(self):
+        from vidharness.providers.minimax_h3 import split_dual_card_kwargs
+        kw = {"prompt": "p", "references": ["r"], "height": 768, "width": 768,
+              "num_frames": 120, "image": "img"}
+        cond, rest = split_dual_card_kwargs("ref2va", kw)
+        assert cond == {"prompt": "p", "references": ["r"], "height": 768,
+                        "width": 768, "num_frames": 120}
+        assert rest == {"num_frames": 120, "image": "img"}
+
+
+class TestMediaTools:
+    def test_extract_frame_cached(self, tmp_path, monkeypatch):
+        """缓存命中时不需要 ffmpeg（测试环境无 ffmpeg 也能通过）。"""
+        import shutil as _shutil
+        from vidharness.consumers.tools import extract_frame
+        monkeypatch.setattr(_shutil, "which", lambda name: None)   # 无 ffmpeg
+        out = tmp_path / "frames"
+        dst = out / "v_t0.00.jpg"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"jpg")
+        assert extract_frame(tmp_path / "v.mp4", 0.0, out) == dst
+
+    def test_extract_frame_failure_returns_none(self, tmp_path, monkeypatch):
+        import shutil as _shutil
+        from vidharness.consumers.tools import extract_frame
+        monkeypatch.setattr(_shutil, "which", lambda name: f"/usr/bin/{name}")
+        assert extract_frame(tmp_path / "v.mp4", 0.0, tmp_path / "frames") is None
+
+    def test_extract_last_frame_no_probe_returns_none(self, tmp_path, monkeypatch):
+        import shutil as _shutil
+        from vidharness.consumers.tools import extract_last_frame
+        monkeypatch.setattr(_shutil, "which", lambda name: None)
+        assert extract_last_frame(tmp_path / "v.mp4", tmp_path / "frames") is None
+
+    def test_sample_frames_cached(self, tmp_path):
+        from vidharness.consumers.tools import sample_frames
+        out = tmp_path / "v_frames"
+        out.mkdir(parents=True, exist_ok=True)
+        for i in range(3):
+            (out / f"frame_{i:02d}.jpg").write_bytes(b"jpg")
+        frames = sample_frames(tmp_path / "v.mp4", 2, tmp_path)
+        assert len(frames) == 2 and frames[0].name == "frame_00.jpg"

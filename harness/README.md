@@ -114,8 +114,10 @@ harness/vidharness/
    script.openai-compat + 提示/解析契约上移 SD + 阶段生命周期事件与配对不变量
 9. ✅ 真实端到端轮（8-16）：story_smoke 首次真实 GPU 全链路验证（E16），
    vLLM 裁判服务恢复（GPU 7）——H3 API 对比实验只差 MINIMAX_API_KEY
-10. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验
-11. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+10. ✅ 画布修复轮（8-16）：双卡 t2va 画布静默失效修复（E18，1:1 实测 768×768）+
+   帧抽取唯一实现点 + ratio 归位任务上下文
+11. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验
+12. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -264,3 +266,12 @@ judge.deepseek-text。真实冒烟：剧本评测走 DeepSeek 文本裁判，两
 judge 产物 adapter 记录正确（judge.deepseek-text）。经验：**评测选型是
 任务配置的一部分，与生成选型同等对待——按阶段显式路由，而不是共享单一
 裁判实例**。
+
+### E18：双卡 t2va 画布参数静默失效（Bug#6）修复实锤（2026-08-16）
+E16 的 diffusers ignored-input 警告溯源到真 bug：双卡拆分把画布参数传给
+不声明它们的条件侧，t2va 画布静默回落到模型默认 16:9——E16 的 1344×768
+是默认值巧合，任何非 16:9 请求都会被静默产出 16:9。修复（variant 感知
+拆分 + ratio 归位 pipeline.context）后实测：story_canvas 1:1 任务产出
+**768×768**（修复前必为 1344×768）。经验：**"被忽略的输入"警告是静默
+降级的烟雾弹，必须溯源到参数消费点；修复要提取为纯函数并用测试锁定**
+（首次修复曾因未提取函数而在真机 NameError）。

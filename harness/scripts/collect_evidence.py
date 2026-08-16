@@ -50,17 +50,21 @@ def main(exp_dir: str):
     manifest = json.loads((exp_dir / "manifest.json").read_text())
     evidence = {"run_id": manifest.get("run_id"), "segments": []}
 
+    from vidharness.consumers.tools import _duration_s, extract_frame
     seg_dir = exp_dir / "artifacts" / "segments"
     workdir = exp_dir / "evidence"
     workdir.mkdir(exist_ok=True)
     for seg in sorted(seg_dir.glob("seg*.mp4")):
-        first = workdir / f"{seg.stem}_first.jpg"
-        subprocess.run(["ffmpeg", "-y", "-ss", "0.5", "-i", str(seg),
-                        "-frames:v", "1", str(first)], capture_output=True)
+        first = extract_frame(seg, 0.5, workdir)
+        if first is None:
+            evidence["segments"].append({"segment": seg.stem, "error": "首帧抽取失败"})
+            continue
         desc = frame_describe(judge, first, workdir)
         # 时长
-        dur = subprocess.run(["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-                              "-of", "csv=p=0", str(seg)], capture_output=True, text=True).stdout.strip()
+        try:
+            dur = f"{_duration_s(seg):.2f}"
+        except Exception:
+            dur = "?"
         evidence["segments"].append({
             "segment": seg.stem, "duration_s": dur, "first_frame_desc": desc,
             "first_frame": str(first),

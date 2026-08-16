@@ -25,35 +25,9 @@ def _img_b64(path: Path) -> str:
 
 
 def _extract_frames(video: Path, n: int = 4, workdir: Path = Path(".")) -> List[Path]:
-    """从视频抽 n 帧（优先 ffmpeg，失败退回 imageio）。"""
-    out = workdir / f"{video.stem}_frames"
-    out.mkdir(parents=True, exist_ok=True)
-    existing = sorted(out.glob("frame_*.jpg"))
-    if len(existing) >= n:
-        return existing[:n]
-    try:
-        import subprocess
-        dur = float(subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(video)], capture_output=True, text=True).stdout.strip())
-        for i in range(n):
-            t = dur * (i + 1) / (n + 1)
-            subprocess.run(["ffmpeg", "-y", "-ss", str(t), "-i", str(video),
-                            "-frames:v", "1", str(out / f"frame_{i:02d}.jpg")],
-                           capture_output=True, check=True)
-        return sorted(out.glob("frame_*.jpg"))
-    except Exception:
-        # 兜底：imageio
-        import imageio
-        reader = imageio.get_reader(str(video))
-        frames = []
-        for i, f in enumerate(reader):
-            frames.append(f)
-        step = max(1, len(frames) // n)
-        import imageio.v2 as iio
-        for i, f in enumerate(frames[::step][:n]):
-            iio.imwrite(str(out / f"frame_{i:02d}.jpg"), f)
-        return sorted(out.glob("frame_*.jpg"))
+    """从视频抽 n 帧（唯一实现点在 consumers/tools.sample_frames）。"""
+    from ..consumers.tools import sample_frames
+    return sample_frames(video, n, workdir)
 
 
 @register("judge.openai-compat")
