@@ -67,6 +67,9 @@ harness/vidharness/
 7. **基准矩阵（benchmark matrix）**：`vh bench <spec>` 把"一次只变一个变量"
    制度化——矩阵展开、规划期全格校验（配置/参数/能力，错误不花 GPU）、
    成本预估（API 声明单价 / 本地 E4 常数）、逐格执行并按格标签对比。
+8. **聚合唯一正源 + leaderboard 基线**：report.collect() 是唯一聚合面
+   （全局/分 stage 分数、通过率、模型、成本分解）；`vh leaderboard <task>`
+   导出可入库基线（JSON+MD+增量 diff），`vh doctor --all` 全量体检。
 
 ## 决策记忆（Agent Notes）
 
@@ -95,8 +98,10 @@ harness/vidharness/
    运行时不变量 + vh doctor、提供者参数声明目录、裁判原始输出归档 artifacts/judge
 5. ✅ 基准轮（8-16）：vh bench 矩阵对比（规划期全格校验 + 成本预估 + 逐格执行）、
    报告分阶段耗时/成本分解、证据脚本配置正源改为实验快照（删除硬编码端点）
-6. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
-7. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+6. ✅ 基线轮（8-16）：leaderboard 基线导出（聚合唯一正源 + git 追踪 + 增量 diff）、
+   doctor --all 全量体检、seam 一致性元测试
+7. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（等 API key + 裁判服务就绪）
+8. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 

@@ -2,7 +2,8 @@
   vh run <task.yaml> --query "春天在哪里"
   vh bench <spec.yaml> --query "..." [--dry-run]   # 基准矩阵对比
   vh adapters [--verbose]                          # 列出适配器/参数声明
-  vh doctor <run_dir>                              # 运行时不变量体检
+  vh doctor <run_dir> | --all <dir>                # 运行时不变量体检
+  vh leaderboard <task> [--publish dir]            # leaderboard 基线导出
 """
 from __future__ import annotations
 
@@ -64,6 +65,26 @@ def cmd_adapters(args):
 
 def cmd_doctor(args):
     from .core.invariants import check_experiment
+    if args.all is None and args.run is None:
+        raise SystemExit("doctor 需要 run 目录或 --all <experiments_dir>")
+    if args.all:
+        base = Path(args.all)
+        checked = bad = 0
+        for task_dir in sorted(base.iterdir()):
+            if not task_dir.is_dir():
+                continue
+            for run_dir in sorted(task_dir.iterdir()):
+                if not (run_dir / "manifest.json").exists():
+                    continue
+                checked += 1
+                violations = check_experiment(run_dir)
+                if violations:
+                    bad += 1
+                    print(f"❌ {run_dir}: {len(violations)} 条违规")
+                    for v in violations[:3]:
+                        print(f"   - {v}")
+        print(f"体检 {checked} 个 run，{bad} 个违规")
+        raise SystemExit(1 if bad else 0)
     path = Path(args.run)
     if not (path / "manifest.json").exists():
         raise SystemExit(f"找不到 manifest.json: {path}")
@@ -91,6 +112,16 @@ def cmd_report(args):
     html = base / f"report_{args.task}.html"
     result = report(base, args.task, html)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_leaderboard(args):
+    from .core.leaderboard import export
+    json_path, md_path, diff = export(
+        Path(args.output), args.task, out_dir=Path(args.publish))
+    print(json.dumps({
+        "json": str(json_path), "md": str(md_path),
+        "diff": diff,
+    }, ensure_ascii=False, indent=2))
 
 
 def cmd_run(args):
@@ -158,8 +189,16 @@ def main(argv=None):
     pa.set_defaults(fn=cmd_adapters)
 
     pd = sub.add_parser("doctor", help="检查实验目录的运行时不变量（manifest↔文件↔事件流）")
-    pd.add_argument("run", help="实验 run 目录（含 manifest.json）")
+    pd.add_argument("run", nargs="?", default=None, help="实验 run 目录（含 manifest.json）")
+    pd.add_argument("--all", default=None, metavar="EXPERIMENTS_DIR",
+                    help="全量体检：扫描目录下所有任务的所有 run")
     pd.set_defaults(fn=cmd_doctor)
+
+    pl = sub.add_parser("leaderboard", help="导出 leaderboard 基线（JSON+MD，与上次基线 diff）")
+    pl.add_argument("task", help="任务名（如 story_short）")
+    pl.add_argument("--output", default="experiments", help="实验输出根目录（读取）")
+    pl.add_argument("--publish", default="leaderboards", help="基线输出目录（默认可入库追踪）")
+    pl.set_defaults(fn=cmd_leaderboard)
 
     pf = sub.add_parser("feedback", help="把用户意见写入经验记忆（环境反馈直达）")
     pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")

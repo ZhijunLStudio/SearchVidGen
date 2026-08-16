@@ -56,8 +56,12 @@ python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..." --dry-run
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..."
 
 # 体检 / 目录
-python -m vidharness.cli doctor experiments/story_short/<run_id>   # 运行时不变量
+python -m vidharness.cli doctor experiments/story_short/<run_id>   # 单 run 不变量
+python -m vidharness.cli doctor --all experiments                  # 全量体检
 python -m vidharness.cli adapters --verbose                        # 能力+参数声明目录
+
+# leaderboard 基线（leaderboards/ 入库追踪；跑完实验后更新并提交）
+python -m vidharness.cli leaderboard story_short
 
 # 测试
 python -m pytest tests/ -q

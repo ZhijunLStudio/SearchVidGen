@@ -1,0 +1,208 @@
+{
+  "task": "story_short",
+  "updated_at": "2026-08-16T08:38:28.905824",
+  "run_count": 6,
+  "runs": [
+    {
+      "run_id": "20260814_213042_1692e2",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [],
+      "scores": {
+        "画面质量": 5.0,
+        "音效场景相符": 8.0,
+        "跨段一致性": 10.0
+      },
+      "stage_scores": {
+        "segments": {
+          "画面质量": 5.0,
+          "音效场景相符": 8.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 10.0
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.5,
+      "total_cost_usd": 0.0,
+      "total_elapsed_s": 4854.4,
+      "local_gpu_hours": 1.348,
+      "created_at": "2026-08-14T23:50:18.512653",
+      "finished_at": "2026-08-14T23:51:01.335726"
+    },
+    {
+      "run_id": "20260815_000309_b2ddfd",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 1.0
+      },
+      "stage_scores": {
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0,
+          "音效场景相符": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 10.0,
+          "叙事推进": 1.0
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.73,
+      "total_cost_usd": 0.00017549000000000002,
+      "total_elapsed_s": 6164.706835508347,
+      "local_gpu_hours": 1.706,
+      "created_at": "2026-08-15T00:03:09.996580",
+      "finished_at": "2026-08-15T01:46:55.315480"
+    },
+    {
+      "run_id": "20260815_035745_dc6795",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 10.0,
+        "叙事推进": 10.0
+      },
+      "stage_scores": {
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0,
+          "音效场景相符": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 10.0,
+          "叙事推进": 10.0
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.91,
+      "total_cost_usd": 0.00019747000000000002,
+      "total_elapsed_s": 6010.11067533493,
+      "local_gpu_hours": 1.662,
+      "created_at": "2026-08-15T03:57:45.799658",
+      "finished_at": "2026-08-15T05:38:41.650118"
+    },
+    {
+      "run_id": "20260815_053752_936037",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 8.33,
+        "叙事推进": 10.0
+      },
+      "stage_scores": {
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0,
+          "音效场景相符": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 8.33,
+          "叙事推进": 10.0
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.55,
+      "total_cost_usd": 0.00014651000000000003,
+      "total_elapsed_s": 13043.772198438644,
+      "local_gpu_hours": 3.622,
+      "created_at": "2026-08-15T05:37:52.530000",
+      "finished_at": "2026-08-15T09:19:14.381016"
+    },
+    {
+      "run_id": "20260815_090608_51d88e",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "叙事完整": 9.0,
+        "旁白自然": 9.0,
+        "可生成性": 8.0,
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 6.0,
+        "叙事推进": 7.33
+      },
+      "stage_scores": {
+        "script_judge": {
+          "叙事完整": 9.0,
+          "旁白自然": 9.0,
+          "可生成性": 8.0
+        },
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0,
+          "音效场景相符": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 6.0,
+          "叙事推进": 7.33
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.42,
+      "total_cost_usd": 0.00017080000000000003,
+      "total_elapsed_s": 4618.747319459915,
+      "local_gpu_hours": 1.276,
+      "created_at": "2026-08-15T09:06:08.732442",
+      "finished_at": "2026-08-15T10:23:57.200865"
+    },
+    {
+      "run_id": "20260815_114851_5fc68e",
+      "bench_cell": null,
+      "chain_mode": null,
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "音效场景相符": 10.0,
+        "跨段一致性": 7.67,
+        "叙事推进": 10.0
+      },
+      "stage_scores": {
+        "script_optimize": {},
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0,
+          "音效场景相符": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 7.67,
+          "叙事推进": 10.0
+        },
+        "audio_verify": {}
+      },
+      "passed_rate": 0.62,
+      "total_cost_usd": 0.00032886000000000005,
+      "total_elapsed_s": 4663.574632644653,
+      "local_gpu_hours": 1.287,
+      "created_at": "2026-08-15T11:48:51.980776",
+      "finished_at": "2026-08-15T13:07:25.387889"
+    }
+  ]
+}

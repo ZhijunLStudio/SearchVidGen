@@ -726,6 +726,9 @@ class _BenchFakeGen:
     def __init__(self, steps=30):
         self.steps = steps
 
+    def generate(self, req, workdir, **kw):
+        raise NotImplementedError("规划假提供者，不实际生成")
+
 
 class TestBench:
     def _base_cfg(self):
@@ -865,3 +868,83 @@ class TestEvidenceScript:
         run_dir = self._run_dir(tmp_path, None)
         with pytest.raises(RuntimeError, match="缺少 judge.adapter"):
             load_judge_from_run(run_dir)
+
+
+class TestSeamConformance:
+    BUILTINS = {
+        "generator.fallback", "generator.minimax-h3-api", "generator.minimax-h3-local",
+        "judge.openai-compat", "script.deepseek-v4-flash", "transcribe.sensevoice-small",
+    }
+
+    def test_registered_providers_conform_to_seam(self):
+        """seam 一致性元测试：每个内置提供者都具备其 seam 的协议成员。"""
+        from vidharness.core.registry import (load_builtin_adapters, list_adapters,
+                                              get, capabilities)
+        load_builtin_adapters()
+        methods = {"generator": "generate", "judge": "judge",
+                   "script": "generate", "transcribe": "transcribe"}
+        checked = 0
+        for name in list_adapters():
+            if name not in self.BUILTINS:
+                continue    # 测试假类不在 seam 契约范围内
+            cls = get(name)
+            seam = name.split(".")[0]
+            assert isinstance(getattr(cls, "name", ""), str) and cls.name, name
+            assert callable(getattr(cls, methods[seam])), f"{name} 缺 {methods[seam]}"
+            assert isinstance(capabilities(name), dict), f"{name} 能力声明缺失"
+            if seam == "generator" and "fallback" not in name:
+                assert capabilities(name).get("backend") in ("local", "api"), \
+                    f"{name} 未声明 backend 成本口径"
+            checked += 1
+        assert checked == len(self.BUILTINS)
+
+
+class TestLeaderboard:
+    def test_export_and_diff(self, tmp_path):
+        from vidharness.core.leaderboard import export
+        exp = _build_exp(tmp_path)
+        exp.bind_label("20.none")
+        exp.save_eval("segments", [{"attempt": 2, "scores": {"与指令一致性": 9.0},
+                                    "passed": True, "score": 9.0}])
+        exp.finalize()
+        out = tmp_path / "leaderboards"
+        json_p, md_p, diff = export(tmp_path, "t", out)
+        assert json_p.exists() and md_p.exists()
+        data = json.loads(json_p.read_text(encoding="utf-8"))
+        assert data["run_count"] == 1
+        assert data["runs"][0]["bench_cell"] == "20.none"
+        assert data["runs"][0]["stage_scores"]["segments"]["与指令一致性"] == 9.0
+        assert "new_runs" in diff and data["runs"][0]["run_id"] in diff["new_runs"]
+        md = md_p.read_text(encoding="utf-8")
+        assert exp.run_id in md and "20.none" in md
+        # 再次导出：无增量
+        _, _, diff2 = export(tmp_path, "t", out)
+        assert diff2["new_runs"] == [] and diff2["removed_runs"] == []
+
+    def test_export_removed_run_detected(self, tmp_path):
+        from vidharness.core.leaderboard import export
+        exp = _build_exp(tmp_path)
+        exp.finalize()
+        out = tmp_path / "leaderboards"
+        export(tmp_path, "t", out)
+        # 基线在，run 消失（模拟目录被清）
+        import shutil
+        shutil.rmtree(exp.root)
+        _, _, diff = export(tmp_path, "t", out)
+        assert diff["removed_runs"] == ["r1"]
+
+
+class TestCollectStageAggregation:
+    def test_stage_scores_and_passed(self, tmp_path):
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        exp.save_eval("segments", [{"attempt": 1, "scores": {"与指令一致性": 6.0},
+                                    "passed": True, "score": 6.0},
+                                   {"attempt": 2, "scores": {"与指令一致性": 8.0},
+                                    "passed": False, "score": 8.0}])
+        exp.finalize()
+        runs = collect(tmp_path, "t")
+        r = runs[0]
+        assert r["stage_scores"]["segments"]["与指令一致性"] == 7.0
+        assert r["stage_passed"]["segments"] == {"passed": 1, "total": 3}
+        assert r["passed_rate"] == pytest.approx(0.33)

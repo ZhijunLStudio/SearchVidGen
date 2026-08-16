@@ -23,6 +23,8 @@ class FallbackGenerator:
           providers: {generator.minimax-h3-api: {resolution: 768P}}
     """
 
+    name = "generator.fallback"   # 类级注册名（实例级为 fallback[...] 展示名）
+
     def __init__(self, chain: List[str], providers: dict | None = None):
         providers = providers or {}
         self.chain = [instantiate(name, providers.get(name, {}), context="fallback")

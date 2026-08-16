@@ -36,31 +36,53 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
         evals = {}
         for f in (run_dir / "eval").glob("*.json"):
             evals[f.stem] = _load_json(f)
-        # 汇总评测分数
+        # 汇总评测分数（全局 + 分 stage 两个口径；消费方只从这里取聚合）
         scores: Dict[str, List[float]] = {}
+        stage_scores: Dict[str, Dict[str, float]] = {}
+        stage_passed: Dict[str, Dict[str, int]] = {}
         passed = 0
         total = 0
         for stage, records in evals.items():
-            for rec in records if isinstance(records, list) else []:
+            if not isinstance(records, list):
+                continue
+            dims: Dict[str, List[float]] = {}
+            sp = st = 0
+            for rec in records:
                 if not isinstance(rec, dict):
                     continue
                 for k, v in rec.get("scores", {}).items():
                     scores.setdefault(k, []).append(v)
+                    dims.setdefault(k, []).append(v)
                 total += 1
+                st += 1
                 if rec.get("passed"):
                     passed += 1
+                    sp += 1
+            stage_scores[stage] = {k: round(sum(v) / len(v), 2) for k, v in dims.items() if v}
+            stage_passed[stage] = {"passed": sp, "total": st}
         # 分阶段耗时/成本分解（manifest stages 的 meta 累计）
         stages_cost: Dict[str, float] = {}
         stages_elapsed: Dict[str, float] = {}
+        models: List[str] = []
+        gen_models: Dict[str, str] = {}
         for stage, arts in manifest.get("stages", {}).items():
             stages_cost[stage] = round(
                 sum(float(a.get("meta", {}).get("cost_usd", 0.0)) for a in arts), 4)
             stages_elapsed[stage] = round(
                 sum(float(a.get("meta", {}).get("elapsed_s", 0.0)) for a in arts), 1)
+            if stage == "segments":
+                for a in arts:
+                    m = a.get("meta", {})
+                    gen_models.setdefault(str(m.get("adapter", "?")),
+                                          str(m.get("model", "?")))
+        models = [f"{k}:{v}" for k, v in sorted(gen_models.items())]
         runs.append({
             "run_id": manifest.get("run_id", run_dir.name),
             "dir": str(run_dir),
             "bench_cell": manifest.get("bench_cell"),
+            "chain_mode": manifest.get("chain_mode"),
+            "query": manifest.get("query"),
+            "models": models,
             "created_at": manifest.get("created_at"),
             "finished_at": manifest.get("finished_at"),
             "total_elapsed_s": manifest.get("total_elapsed_s", 0),
@@ -71,6 +93,8 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
             "stages_elapsed_s": stages_elapsed,
             "retries": manifest.get("retries", {}),
             "scores": {k: round(sum(v) / len(v), 2) for k, v in scores.items() if v},
+            "stage_scores": stage_scores,
+            "stage_passed": stage_passed,
             "passed_rate": round(passed / total, 2) if total else None,
             "final_video": str(Path(run_dir) / "final" / "final_video.mp4"),
         })
