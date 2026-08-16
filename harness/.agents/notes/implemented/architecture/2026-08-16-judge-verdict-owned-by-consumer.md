@@ -21,7 +21,8 @@ Judge seam 原协议把 `weight`/`min_score`/`aliases` 留在消费者侧（YAML
 - 提供者 payload 只含原始数据：`{"scores": {维度名: 分数}, "feedback": str}`；
 - 消费者经 `run_judge()` 统一结算：`finalize_verdict(scores, feedback, criteria)`
   加权、按 min_score 判定、缺失维度计 0 且判未通过（解析失败不得静默通过）；
-- `parse_judge_output` 保留为 parse_scores + finalize_verdict 的兼容封装。
+- 现状更新（8-16 晚）：`parse_judge_output` 兼容封装已随死代码清理移除——
+  解析只保留 parse_scores + finalize_verdict 两段。
 
 对齐 DeepSeek Harness 的"显式 > 隐式"：缺省与策略应用是拥有方的显式
 `resolve(request): Spec` 步骤（这里是 `run_judge`），不是提供者 `run()` 里的

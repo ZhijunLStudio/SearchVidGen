@@ -16,8 +16,8 @@ Status: implemented
 一行 JSON，先落事件再更新投影）；`manifest.json` 降级为**投影**（保持原格式，
 供 report/compare 等脚本快速读取）。
 
-事件类型（v=1）：`run.created` / `query.bound` / `config.snapshotted`（含 sha256）/
-`artifact.saved` / `eval.saved` / `retry` / `manifest.set` / `finalized`。
+事件类型（v=1）：`run.created` / `query.bound` / `config.snapshotted`（含 sha256）/ `artifact.saved` / `eval.saved` / `retry` / `manifest.set` / `finalized`；
+另有时序事件 `stage.started` / `stage.finished`（阶段生命周期笔记，不参与投影）。
 
 - **崩溃恢复**：打开实验时若事件流完整（首个事件是 run.created），用重放结果
   重建 manifest——投影丢失/损坏不影响恢复；

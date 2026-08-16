@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from vidharness.core.registry import (register, get, check_capabilities,  # noqa: E402
                                       instantiate, resolve_provider,
                                       SEAM_CAPABILITY_SCHEMAS)
-from vidharness.consumers.judge_loop import (parse_judge_output, parse_scores,  # noqa: E402
+from vidharness.consumers.judge_loop import (parse_scores,  # noqa: E402
                                              finalize_verdict, run_judge)
 from vidharness.seams import (JudgeCriteria, RetryPolicy, Artifact, ArtifactMeta,  # noqa: E402
                               criteria_to_spec, spec_to_criteria)
@@ -134,7 +134,8 @@ class TestJudgeParsing:
         out = '```json\n{"与指令一致性": 8, "画面质量": 7, "feedback": "ok"}\n```'
         crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6),
                 JudgeCriteria(name="画面质量", question="q", min_score=6)]
-        v = parse_judge_output(out, crit)
+        scores, fb = parse_scores(out, crit)
+        v = finalize_verdict(scores, fb, crit)
         assert v["passed"] is True
         assert v["scores"]["与指令一致性"] == 8
 
@@ -142,14 +143,16 @@ class TestJudgeParsing:
         out = '{"与指令一致性": 4, "画面质量": 8, "feedback": "主体崩坏"}'
         crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6),
                 JudgeCriteria(name="画面质量", question="q", min_score=6)]
-        v = parse_judge_output(out, crit)
+        scores, fb = parse_scores(out, crit)
+        v = finalize_verdict(scores, fb, crit)
         assert v["passed"] is False
         assert "主体崩坏" in v["feedback"]
 
     def test_fallback_score_pattern(self):
         out = "总体评分：7/10，画面尚可"
         crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6)]
-        v = parse_judge_output(out, crit)
+        scores, fb = parse_scores(out, crit)
+        v = finalize_verdict(scores, fb, crit)
         assert v["scores"]["与指令一致性"] == 7
 
     def test_parse_scores_returns_raw(self):
@@ -216,7 +219,8 @@ class TestJudgeAliases:
         out = "分析：一致性: 8，画面质量: 7"
         crit = [JudgeCriteria(name="与指令一致性", question="q", min_score=6, aliases=["一致性"]),
                 JudgeCriteria(name="画面质量", question="q", min_score=6)]
-        v = parse_judge_output(out, crit)
+        scores, fb = parse_scores(out, crit)
+        v = finalize_verdict(scores, fb, crit)
         assert v["scores"]["与指令一致性"] == 8
         assert v["scores"]["画面质量"] == 7
 
@@ -968,7 +972,6 @@ class TestExperienceMemory:
         assert mem.experience_lines() == []          # 第一次不提升
         mem.add("旁白太肉麻，要真实朴素！", source="run2/judge")   # 规范化后同 key
         assert "旁白太肉麻，要真实朴素" in mem.experience_lines()
-        assert mem.recent_feedback() == []           # 提升后不再算待提升反馈
 
     def test_threshold_one_promotes_first_add(self, tmp_path):
         from vidharness.core.memory import ExperienceMemory
@@ -1979,13 +1982,6 @@ class TestCoverageGaps:
         mem = ExperienceMemory(p)
         assert len(mem.load_warnings) == 2
         assert mem.experience_lines() == []
-
-    def test_memory_recent_feedback_order(self, tmp_path):
-        from vidharness.core.memory import ExperienceMemory
-        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=99)
-        mem.add("问题A", source="r1")
-        mem.add("问题B", source="r2")
-        assert mem.recent_feedback(1) == ["问题B"]   # 最近优先
 
     # ---- registry 分支 ----
     def test_instantiate_var_kw_class(self):

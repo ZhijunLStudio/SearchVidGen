@@ -37,5 +37,6 @@ Status: implemented
   （跨任务、跨 run、跨 bench 格累积）。
 - 版本升级路径：格式演进 bump MEMORY_FORMAT_VERSION；读取侧对旧版本要么
   迁移要么明确跳过并告警。
-- 回归测试锁定：threshold=2 时第二次 add 提升、threshold=1 时首次即提升、
-  提升后不再出现在 recent_feedback。
+- 回归测试锁定：threshold=2 时第二次 add 提升、threshold=1 时首次即提升。
+  现状更新（8-16 晚）：`recent_feedback` 接口因无生产调用方被移除
+  （死代码清理），提升语义不变。

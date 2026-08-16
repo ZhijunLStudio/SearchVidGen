@@ -123,9 +123,3 @@ class ExperienceMemory:
             if item.get("kind") == "experience" or item.get("promoted"):
                 out.append(item["complaint"])
         return out
-
-    def recent_feedback(self, n: int = 3) -> List[str]:
-        """最近未提升的负面反馈（供局部重试上下文）。"""
-        fresh = [i for i in self._items if not i.get("promoted") and i.get("kind") == "feedback"]
-        fresh.sort(key=lambda i: i.get("last_at", 0), reverse=True)
-        return [i["complaint"] for i in fresh[:n]]

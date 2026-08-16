@@ -103,12 +103,6 @@ def finalize_verdict(scores: Dict[str, float], feedback: str,
     }
 
 
-def parse_judge_output(text: str, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
-    """兼容封装：parse_scores + finalize_verdict（旧调用点/外部脚本使用）。"""
-    scores, feedback = parse_scores(text, criteria)
-    return finalize_verdict(scores, feedback, criteria)
-
-
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
