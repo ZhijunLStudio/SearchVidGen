@@ -64,6 +64,9 @@ harness/vidharness/
 6. **声明式提供者目录**：每个适配器声明 capabilities（能力 schema 校验）与
    param_schema（参数类型/取值/必需），`vh adapters --verbose` 即自助文档；
    支持 `route:` 按能力路由与 `generator.fallback` 降级链。
+7. **基准矩阵（benchmark matrix）**：`vh bench <spec>` 把"一次只变一个变量"
+   制度化——矩阵展开、规划期全格校验（配置/参数/能力，错误不花 GPU）、
+   成本预估（API 声明单价 / 本地 E4 常数）、逐格执行并按格标签对比。
 
 ## 决策记忆（Agent Notes）
 
@@ -90,8 +93,10 @@ harness/vidharness/
    成本口径声明化；Bug#1-#4 修复
 4. ✅ 事件溯源轮（8-16）：events.jsonl 权威事件流 + 崩溃重放恢复、
    运行时不变量 + vh doctor、提供者参数声明目录、裁判原始输出归档 artifacts/judge
-5. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
-6. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+5. ✅ 基准轮（8-16）：vh bench 矩阵对比（规划期全格校验 + 成本预估 + 逐格执行）、
+   报告分阶段耗时/成本分解、证据脚本配置正源改为实验快照（删除硬编码端点）
+6. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验（下轮）
+7. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 
@@ -192,3 +197,10 @@ ref 是更强的一致化工具（锚点质量决定一致性下限）。
 根因：裁判 workdir 指向 eval_dir。修复：裁判原始输出迁至 artifacts/judge/
 （作为产物经事件流归档），eval/ 只保留评测明细记录；doctor 对旧布局给出迁移提示。
 经验：**关系不变量（"此目录只放哪种文件"）能抓住 schema 校验看不见的结构污染**。
+
+### E13：证据脚本的硬编码端点审计（2026-08-16）
+审计 scripts/ 发现 collect_evidence.py 硬编码裁判端点与模型名——违反"配置正源
+= 实验快照"原则；judge 服务换端口后证据会静默失效或口径不可比。修复：裁判配置
+从 run 的 config.yaml 快照读取（无快照 fail loud）。同日 bench dry-run 对真实
+story.yaml 的 4 格矩阵（步数×温度）全部规划期校验通过，本地口径预估 $0.96/格、
+总 $3.84——**配置错误与成本暴露都发生在 GPU 启动之前**。

@@ -1,0 +1,10 @@
+# 基准矩阵示例（bench spec）：步数 × 剧本温度 的消融对比
+# vh bench tasks/bench_ablation.yaml --query "..." --dry-run   # 先规划校验+成本预估
+# vh bench tasks/bench_ablation.yaml --query "..."             # 逐格真跑（每格一个 run）
+# 矩阵路径从配置根写起（点路径，如 pipeline.generator.params.steps）
+bench:
+  base: tasks/story.yaml
+  matrix:
+    - pipeline.generator.params.steps: [20, 30]
+    - pipeline.script.params.temperature: [0.7, 0.9]
+  local_min_per_seg: 12        # E4 规划常数：本地 A800 双卡单段 ~12-18 分钟

@@ -293,6 +293,9 @@ class MiniMaxH3API:
     capabilities = {
         "max_duration_s": 15, "audio": True, "refs": 9,
         "first_last_frame": True, "resolution": "2K", "backend": "api",
+        # 官方定价近似（¥0.3/秒 768P、¥0.8/秒 2K，按 7.2 汇率）——仅规划预估，
+        # 实际计费以官方为准（与 _estimate_cost 同口径）
+        "cost_rates_usd_per_s": {"768P": 0.042, "2K": 0.111},
     }
     param_schema = {
         "api_key": {"type": "secret", "default": "", "help": "MiniMax API key（缺省读环境）"},

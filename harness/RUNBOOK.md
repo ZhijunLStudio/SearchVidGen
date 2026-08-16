@@ -51,6 +51,10 @@ python -m vidharness.cli report story_short --output experiments
 python scripts/compare_chains.py experiments/story_short
 python scripts/collect_evidence.py experiments/story_short/<run_id>
 
+# 基准矩阵（一次只变一个变量；规划期全格校验，错误不花 GPU）
+python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..." --dry-run
+python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..."
+
 # 体检 / 目录
 python -m vidharness.cli doctor experiments/story_short/<run_id>   # 运行时不变量
 python -m vidharness.cli adapters --verbose                        # 能力+参数声明目录
@@ -75,6 +79,15 @@ config.yaml（有效配置快照）+ artifacts/（产物，.meta.json 含完整�
 - `min_score`/`weight`: 评测阈值与权重（由消费者统一结算，改配置即生效）
 - `cost.gpu_price_usd_per_hour`: 本地 GPU 成本口径（默认 1.2）
 - params 类型/取值/必需性由适配器的 param_schema 声明目录校验（fail loud）
+
+## bench spec（tasks/bench_ablation.yaml 示例）
+
+- `bench.base`: 基础任务配置 YAML（路径相对 harness/）
+- `bench.matrix`: 变量轴列表，每项 {点路径: [取值...]}，路径从配置根写全
+  （如 pipeline.generator.params.steps）；展开 = 笛卡尔积，格标签 = 取值拼接
+- `bench.local_min_per_seg`: 本地 GPU 每段分钟数（E4 规划常数 12，可覆盖）
+- 成本预估口径：API = 段数×时长×声明单价（cost_rates_usd_per_s）；
+  本地 = 段数×local_min_per_seg×gpu_price；预估≠结算（结算看 manifest）
 
 ## 决策记录
 

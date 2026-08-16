@@ -713,3 +713,155 @@ class TestTools:
         from vidharness.consumers.tools import require_tool
         monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
         assert require_tool("ffprobe") == "/usr/bin/ffprobe"
+
+
+@register("generator.bench-fake")
+class _BenchFakeGen:
+    name = "generator.bench-fake"
+    capabilities = {"max_duration_s": 15, "audio": True, "refs": 9,
+                    "first_last_frame": True, "resolution": "768p",
+                    "backend": "api",
+                    "cost_rates_usd_per_s": {"768P": 0.1, "2K": 0.2}}
+    param_schema = {"steps": {"type": "int", "default": 30}}
+    def __init__(self, steps=30):
+        self.steps = steps
+
+
+class TestBench:
+    def _base_cfg(self):
+        return {
+            "task_name": "t", "segments": 4,
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.bench-fake",
+                              "params": {"steps": 30}},
+                "context": {"chain_mode": "none", "anchor_refs": []}},
+            "judge": {"adapter": "judge.cap-test", "params": {}},
+        }
+
+    def test_matrix_expansion(self):
+        from vidharness.core.bench import expand_matrix
+        cells = expand_matrix(self._base_cfg(), [
+            {"pipeline.generator.params.steps": [20, 30]},
+            {"pipeline.context.chain_mode": ["none", "hard"]},
+        ])
+        assert [c[0] for c in cells] == ["20.none", "20.hard", "30.none", "30.hard"]
+        # 深拷贝隔离：改一格不影响其他格
+        cells[0][1]["pipeline"]["generator"]["params"]["steps"] = 999
+        assert cells[2][1]["pipeline"]["generator"]["params"]["steps"] == 30
+
+    def test_matrix_bad_path_fails(self):
+        from vidharness.core.bench import expand_matrix, BenchError
+        with pytest.raises(BenchError, match="不可写"):
+            expand_matrix(self._base_cfg(), [{"nope.steps": [1]}])
+        with pytest.raises(BenchError, match="非空列表"):
+            expand_matrix(self._base_cfg(), [{"pipeline.generator.params.steps": []}])
+
+    def test_plan_validates_every_cell(self, tmp_path):
+        from vidharness.core.bench import plan, BenchError
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(self._base_cfg(), ensure_ascii=False), encoding="utf-8")
+        spec = {"bench": {"base": str(base),
+                          "matrix": [{"pipeline.generator.params.steps": [20, "bad"]}]}}
+        # 第二格 steps="bad" 违反参数声明 → 规划期整体失败（不花 GPU）
+        with pytest.raises(Exception):
+            plan(spec)
+
+    def test_plan_estimate_api(self, tmp_path):
+        from vidharness.core.bench import plan
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(self._base_cfg(), ensure_ascii=False), encoding="utf-8")
+        spec = {"bench": {"base": str(base),
+                          "matrix": [{"pipeline.generator.params.steps": [20]}]}}
+        rows = plan(spec)
+        assert len(rows) == 1
+        est = rows[0]["estimate"]
+        # 4 段 × 8 秒 × 0.1 USD/s（768P 声明单价）
+        assert est["cost_usd_est"] == 3.2
+        assert "768P" in est["basis"]
+
+    def test_plan_estimate_local(self, tmp_path):
+        from vidharness.core.bench import plan
+        cfg = self._base_cfg()
+        cfg["pipeline"]["generator"] = {"adapter": "generator.text-only", "params": {}}
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        spec = {"bench": {"base": str(base),
+                          "matrix": [{"segments": [4]}],
+                          "local_min_per_seg": 12}}
+        rows = plan(spec)
+        est = rows[0]["estimate"]
+        # 4 段 × 12 分钟 = 0.8 GPU 时 × 1.2 USD/卡时
+        assert est["gpu_hours_est"] == 0.8
+        assert est["cost_usd_est"] == 0.96
+
+    def test_plan_rejects_unknown_bench_keys(self, tmp_path):
+        from vidharness.core.bench import plan, BenchError
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(self._base_cfg(), ensure_ascii=False), encoding="utf-8")
+        with pytest.raises(BenchError, match="未知键"):
+            plan({"bench": {"base": str(base), "matrix": [], "matrixx": []}})
+
+
+class TestReport:
+    def test_collect_stage_breakdown_and_completeness(self, tmp_path):
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        assert collect(tmp_path, "t") == []          # 未 finalize：不完整，不进对比
+        exp.finalize()
+        runs = collect(tmp_path, "t")
+        assert len(runs) == 1
+        r = runs[0]
+        assert r["stages_cost_usd"]["segments"] == 0.5
+        assert r["stages_elapsed_s"]["segments"] == 2.0
+        assert r["finished_at"]
+
+    def test_collect_legacy_completeness_by_final_video(self, tmp_path):
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        (exp.final_dir / "final_video.mp4").write_bytes(b"fake")   # 旧口径：有成品即完整
+        runs = collect(tmp_path, "t")
+        assert len(runs) == 1 and runs[0]["finished_at"] is None
+
+    def test_bench_cell_passthrough(self, tmp_path):
+        from vidharness.core.report import collect
+        exp = _build_exp(tmp_path)
+        exp.bind_label("20.none")
+        exp.finalize()
+        runs = collect(tmp_path, "t")
+        assert runs[0]["bench_cell"] == "20.none"
+
+
+class TestEvidenceScript:
+    def _run_dir(self, tmp_path, judge_cfg=None):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        cfg = {"judge": judge_cfg} if judge_cfg else {}
+        (run_dir / "config.yaml").write_text(
+            json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        return run_dir
+
+    def test_load_judge_from_snapshot(self, tmp_path):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from collect_evidence import load_judge_from_run
+        run_dir = self._run_dir(tmp_path, {"adapter": "judge.cap-test", "params": {}})
+        judge = load_judge_from_run(run_dir)
+        assert judge.name == "judge.cap-test"
+
+    def test_load_judge_without_snapshot_fails_loud(self, tmp_path):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from collect_evidence import load_judge_from_run
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        with pytest.raises(RuntimeError, match="缺少配置快照"):
+            load_judge_from_run(run_dir)
+
+    def test_load_judge_without_judge_key_fails_loud(self, tmp_path):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from collect_evidence import load_judge_from_run
+        run_dir = self._run_dir(tmp_path, None)
+        with pytest.raises(RuntimeError, match="缺少 judge.adapter"):
+            load_judge_from_run(run_dir)

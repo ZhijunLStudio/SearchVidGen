@@ -27,6 +27,7 @@ SEAM_CAPABILITY_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "first_last_frame": bool,
         "resolution": str,
         "backend": str,          # "local" | "api"（成本模型与计费依据）
+        "cost_rates_usd_per_s": dict,  # API 单价声明（如 {"768P": 0.042}），规划预估用
     },
     "judge": {
         "frame_sampling": bool,

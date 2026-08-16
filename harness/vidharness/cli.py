@@ -1,6 +1,8 @@
 """命令行入口：
   vh run <task.yaml> --query "春天在哪里"
-  vh adapters            # 列出已注册适配器
+  vh bench <spec.yaml> --query "..." [--dry-run]   # 基准矩阵对比
+  vh adapters [--verbose]                          # 列出适配器/参数声明
+  vh doctor <run_dir>                              # 运行时不变量体检
 """
 from __future__ import annotations
 
@@ -14,6 +16,26 @@ import yaml
 from .core.experiment import Experiment
 from .consumers.segment_director import SegmentDirector
 from .core.registry import list_adapters, load_builtin_adapters
+
+
+def run_task(cfg: dict, query: str, output: str,
+             resume: str | None = None, label: str | None = None) -> tuple[Path, Path]:
+    """执行一次任务运行（bench 逐格执行复用本函数）。返回 (成片, 实验目录)。"""
+    task = cfg.get("task_name", "story")
+    if resume:
+        exp = Experiment(task=task, base_dir=Path(output), run_id=resume)
+        if not exp.root.exists():
+            raise SystemExit(f"找不到实验 {resume}（在 {exp.root}）")
+        print(f"♻️ 断点续跑: {exp.root}")
+    else:
+        exp = Experiment(task=task, base_dir=Path(output))
+    exp.bind_query(query)      # 记录实验变量 + 续跑一致性守卫
+    if label:
+        exp.bind_label(label)
+    exp.snapshot_config(cfg)   # 冻结有效配置进实验目录：可重建 + 续跑守卫
+    director = SegmentDirector(exp, cfg)
+    final = director.run(query)
+    return final, exp.root
 
 
 def cmd_adapters(args):
@@ -77,25 +99,38 @@ def cmd_run(args):
     # 配置校验（fail loud）：拼错的键/策略在启动时拒绝，而不是静默吞默认值
     from .core.config import validate_task
     validate_task(cfg)
-    task = cfg.get("task_name", "story")
     if args.brief:
         cfg["brief"] = args.brief
     if args.segments:
         cfg["segments"] = args.segments
-    if args.resume:
-        exp = Experiment(task=task, base_dir=Path(args.output), run_id=args.resume)
-        if not exp.root.exists():
-            raise SystemExit(f"找不到实验 {args.resume}（在 {exp.root}）")
-        print(f"♻️ 断点续跑: {exp.root}")
-    else:
-        exp = Experiment(task=task, base_dir=Path(args.output))
-    exp.bind_query(args.query)   # 记录实验变量 + 续跑一致性守卫
-    # 冻结有效配置进实验目录：可重建 + 续跑一致性守卫
-    exp.snapshot_config(cfg)
-    director = SegmentDirector(exp, cfg)
-    final = director.run(args.query)
-    print(json.dumps({"final": str(final), "experiment": str(exp.root)},
+    final, root = run_task(cfg, args.query, args.output, resume=args.resume)
+    print(json.dumps({"final": str(final), "experiment": str(root)},
                      ensure_ascii=False, indent=2))
+
+
+def cmd_bench(args):
+    from .core.bench import plan
+    load_builtin_adapters()
+    spec = yaml.safe_load(Path(args.spec).read_text(encoding="utf-8"))
+    # 规划期校验全部格子：任何一格配置不合法即整体失败，不花一分钟 GPU
+    rows = plan(spec)
+    print(f"基准规划：{len(rows)} 格")
+    total = 0.0
+    for r in rows:
+        est = r["estimate"]
+        cost = est.get("cost_usd_est")
+        if cost is not None:
+            total += cost
+        print(f"  [{r['label']:24s}] backend={r['caps'].get('backend')} "
+              f"预估 ${cost}（{est['basis']}）")
+    print(f"预估总成本 ≈ ${round(total, 2)}（规划口径；实际以各 run 的 manifest 结算为准）")
+    if args.dry_run:
+        print("dry-run：未执行生成")
+        return
+    for r in rows:
+        print(f"\n▶ bench 格 [{r['label']}]")
+        final, root = run_task(r["cfg"], args.query, args.output, label=r["label"])
+        print(f"  完成: {final}")
 
 
 def main(argv=None):
@@ -110,6 +145,13 @@ def main(argv=None):
     pr.add_argument("--output", default="experiments", help="实验输出根目录")
     pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)
+
+    pb = sub.add_parser("bench", help="基准矩阵对比（规划期全格校验 + 逐格执行）")
+    pb.add_argument("spec", help="bench spec YAML（含 bench: {base, matrix} 段）")
+    pb.add_argument("--query", required=True, help="目标（故事主题/产品/想法）")
+    pb.add_argument("--output", default="experiments", help="实验输出根目录")
+    pb.add_argument("--dry-run", action="store_true", help="只做规划校验与成本预估，不生成")
+    pb.set_defaults(fn=cmd_bench)
 
     pa = sub.add_parser("adapters", help="列出适配器（--verbose 显示参数声明目录）")
     pa.add_argument("--verbose", action="store_true", help="显示能力与参数声明")

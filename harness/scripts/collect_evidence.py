@@ -2,15 +2,35 @@
 
 用法：python scripts/collect_evidence.py <experiment_dir>
 输出：evidence.json（每段首帧描述 + 评测记录 + 性能成本）
+
+裁判适配器与参数从 run 的 config.yaml 快照读取（配置正源是实验快照，
+脚本不硬编码端点/模型名）；旧 run 无快照则响亮失败并给出指引。
 """
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from vidharness.core.registry import load_builtin_adapters, get
+from vidharness.core.registry import load_builtin_adapters, instantiate
+
+
+def load_judge_from_run(run_dir: Path):
+    """从 run 的配置快照实例化裁判（fail loud：无快照/缺配置直接报错）。"""
+    cfg_file = run_dir / "config.yaml"
+    if not cfg_file.exists():
+        raise RuntimeError(
+            f"run 缺少配置快照 config.yaml（2026-08-16 前的旧 run）。"
+            f"重新运行该任务生成快照后再收集证据，保证证据与运行同口径。")
+    cfg = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
+    judge_cfg = cfg.get("judge") or {}
+    name = judge_cfg.get("adapter")
+    if not name:
+        raise RuntimeError("配置快照缺少 judge.adapter")
+    return instantiate(name, judge_cfg.get("params", {}), context="collect_evidence")
 
 
 def frame_describe(judge, img: Path, workdir: Path) -> str:
@@ -25,8 +45,7 @@ def frame_describe(judge, img: Path, workdir: Path) -> str:
 def main(exp_dir: str):
     exp_dir = Path(exp_dir)
     load_builtin_adapters()
-    judge = get("judge.openai-compat")(
-        base_url="http://127.0.0.1:8030/v1", model="judge-qwen3.5-27b")
+    judge = load_judge_from_run(exp_dir)
 
     manifest = json.loads((exp_dir / "manifest.json").read_text())
     evidence = {"run_id": manifest.get("run_id"), "segments": []}

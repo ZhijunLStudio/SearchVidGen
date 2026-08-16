@@ -258,6 +258,10 @@ class Experiment:
         self._emit("query.bound", query=query)
         self.manifest["query"] = query
 
+    def bind_label(self, label: str) -> None:
+        """记录实验标签（bench 矩阵格标签等），供报告分组对比。"""
+        self.set_meta("bench_cell", label)
+
     def snapshot_config(self, cfg: Dict[str, Any]) -> Path:
         """把本次运行的有效任务配置冻结进实验目录（可重建性）。
 

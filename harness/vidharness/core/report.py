@@ -29,8 +29,9 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
         manifest = _load_json(run_dir / "manifest.json")
         if not manifest:
             continue
-        # 只统计有成片的完整 run（中断的调试 run 不进入对比）
-        if not (run_dir / "final" / "final_video.mp4").exists():
+        # 完整性：有 finished_at（新口径）或成片存在（旧 run 兼容）
+        if not manifest.get("finished_at") and \
+           not (run_dir / "final" / "final_video.mp4").exists():
             continue
         evals = {}
         for f in (run_dir / "eval").glob("*.json"):
@@ -48,14 +49,26 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
                 total += 1
                 if rec.get("passed"):
                     passed += 1
+        # 分阶段耗时/成本分解（manifest stages 的 meta 累计）
+        stages_cost: Dict[str, float] = {}
+        stages_elapsed: Dict[str, float] = {}
+        for stage, arts in manifest.get("stages", {}).items():
+            stages_cost[stage] = round(
+                sum(float(a.get("meta", {}).get("cost_usd", 0.0)) for a in arts), 4)
+            stages_elapsed[stage] = round(
+                sum(float(a.get("meta", {}).get("elapsed_s", 0.0)) for a in arts), 1)
         runs.append({
             "run_id": manifest.get("run_id", run_dir.name),
             "dir": str(run_dir),
+            "bench_cell": manifest.get("bench_cell"),
             "created_at": manifest.get("created_at"),
             "finished_at": manifest.get("finished_at"),
             "total_elapsed_s": manifest.get("total_elapsed_s", 0),
             "total_cost_usd": manifest.get("total_cost_usd", 0),
+            "local_gpu_hours": manifest.get("local_gpu_hours"),
             "stages": {k: len(v) for k, v in manifest.get("stages", {}).items()},
+            "stages_cost_usd": stages_cost,
+            "stages_elapsed_s": stages_elapsed,
             "retries": manifest.get("retries", {}),
             "scores": {k: round(sum(v) / len(v), 2) for k, v in scores.items() if v},
             "passed_rate": round(passed / total, 2) if total else None,
@@ -65,13 +78,17 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
 
 
 def render_html(runs: List[Dict[str, Any]], out: Path) -> Path:
+    has_cell = any(r.get("bench_cell") for r in runs)
+    cell_header = "<th>Bench 格</th>" if has_cell else ""
     rows = ""
     for r in runs:
+        cell = f"<td>{r['bench_cell']}</td>" if has_cell else ""
         score_cells = "".join(
             f"<td>{k}<br><b>{v}</b></td>" for k, v in r.get("scores", {}).items())
         rows += f"""
         <tr>
           <td>{r['run_id']}</td>
+          {cell}
           <td>{r['created_at']}</td>
           <td>{r['total_elapsed_s'] / 60:.1f} min</td>
           <td>${r['total_cost_usd']:.4f}</td>
@@ -91,7 +108,7 @@ th {{ background: #f5f5f5; }}
 <h2>VidHarness 实验对比</h2>
 <p>生成时间：<span id="t"></span>　实验数：{len(runs)}</p>
 <table>
-<tr><th>Run</th><th>创建时间</th><th>总耗时</th><th>API 成本</th><th>通过率</th><th>重试</th><th>各维度均分</th><th>产物</th></tr>
+<tr><th>Run</th>{cell_header}<th>创建时间</th><th>总耗时</th><th>API 成本</th><th>通过率</th><th>重试</th><th>各维度均分</th><th>产物</th></tr>
 {rows}
 </table>
 <script>document.getElementById('t').textContent = new Date().toLocaleString();</script>
