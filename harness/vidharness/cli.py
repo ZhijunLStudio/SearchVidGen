@@ -143,7 +143,8 @@ def cmd_run(args):
         cfg["brief"] = args.brief
     if args.segments:
         cfg["segments"] = args.segments
-    final, root = run_task(cfg, args.query, args.output, resume=args.resume)
+    final, root = run_task(cfg, args.query, args.output, resume=args.resume,
+                           label=args.label)
     print(json.dumps({"final": str(final), "experiment": str(root)},
                      ensure_ascii=False, indent=2))
 
@@ -195,6 +196,7 @@ def main(argv=None):
     pr.add_argument("--query", required=True, help="目标（故事主题/产品/想法）")
     pr.add_argument("--brief", default=None, help="补充要求（可选，运行时给出，如风格/受众/时长）")
     pr.add_argument("--segments", type=int, default=None, help="分镜段数（默认4）")
+    pr.add_argument("--label", default=None, help="实验标签（manifest.bench_cell，供分组对比）")
     pr.add_argument("--output", default="experiments", help="实验输出根目录")
     pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)

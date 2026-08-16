@@ -1,7 +1,7 @@
 {
   "task": "story_smoke",
-  "updated_at": "2026-08-16T09:22:37.603590",
-  "run_count": 1,
+  "updated_at": "2026-08-16T12:30:08.327102",
+  "run_count": 2,
   "runs": [
     {
       "run_id": "20260816_085034_b3bacf",
@@ -30,6 +30,42 @@
       "local_gpu_hours": 0.492,
       "created_at": "2026-08-16T08:50:34.163258",
       "finished_at": "2026-08-16T09:21:18.605381"
+    },
+    {
+      "run_id": "20260816_120135_4e5c56",
+      "bench_cell": "none-r3",
+      "chain_mode": "none",
+      "models": [
+        "generator.minimax-h3-local:MiniMax-H3-Base"
+      ],
+      "scores": {
+        "叙事完整": 5.0,
+        "可生成性": 8.0,
+        "与指令一致性": 10.0,
+        "画面质量": 10.0,
+        "跨段一致性": 3.0,
+        "叙事推进": 3.0
+      },
+      "stage_scores": {
+        "script_judge": {
+          "叙事完整": 5.0,
+          "可生成性": 8.0
+        },
+        "segments": {
+          "与指令一致性": 10.0,
+          "画面质量": 10.0
+        },
+        "cross_consistency": {
+          "跨段一致性": 3.0,
+          "叙事推进": 3.0
+        }
+      },
+      "passed_rate": 0.6,
+      "total_cost_usd": 0.0003913,
+      "total_elapsed_s": 1596.9031281471252,
+      "local_gpu_hours": 0.437,
+      "created_at": "2026-08-16T12:01:35.975368",
+      "finished_at": "2026-08-16T12:28:23.968287"
     }
   ]
 }
