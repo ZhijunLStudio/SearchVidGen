@@ -26,6 +26,9 @@ judge:
     model: judge-qwen3.5-27b
     frame_samples: 2
     disable_thinking: true
+  stages:
+    # 文本评测走 DeepSeek 文本裁判：不依赖 VLM 服务就绪（E16 待办①）
+    script_judge: {adapter: judge.deepseek-text, params: {model: deepseek-chat}}
 
 script_judge:
   - {name: 叙事完整, question: "分镜是否构成完整有起伏的故事？", weight: 1.0, min_score: 6}

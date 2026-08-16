@@ -74,6 +74,8 @@ harness/vidharness/
    script 缝双实现（DeepSeek 官方 + 通用 OpenAI 兼容端点），提示/解析契约
    归 Service Definition 所有；模态声明可强制——媒体评测配到 text-only
    裁判在第一次调用即响亮失败，抽帧失败记错误记录而不是假装评测。
+   **阶段级裁判路由**（judge.stages）：文本评测阶段可覆盖为 DeepSeek 文本
+   裁判，消除对 VLM 服务就绪的依赖。
 
 ## 决策记忆（Agent Notes）
 
@@ -254,3 +256,11 @@ story_smoke 任务（2 段×19 步，GPU 4/6 双卡生成 + GPU 7 vLLM 裁判，
   评价；judge.deepseek-text 可承接文本评测消除此依赖）；②diffusers 双卡
   t2va conditioner 报 ignored-input 警告（height/width/num_frames），
   画布最终仍正确（1344×768），留待与上游确认
+
+### E17：阶段级裁判路由落地（2026-08-16，E16 待办①关闭）
+judge.stages 阶段路由上线：story_smoke 的 script_judge 覆盖为
+judge.deepseek-text。真实冒烟：剧本评测走 DeepSeek 文本裁判，两次尝试
+（第 1 次空评分 → 反馈重试 → 第 2 次 叙事完整 5.0/可生成性 7.0），
+judge 产物 adapter 记录正确（judge.deepseek-text）。经验：**评测选型是
+任务配置的一部分，与生成选型同等对待——按阶段显式路由，而不是共享单一
+裁判实例**。

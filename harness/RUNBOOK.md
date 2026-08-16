@@ -87,6 +87,8 @@ config.yaml（有效配置快照）+ artifacts/（产物，.meta.json 含完整�
 - judge 适配器二选一：`judge.openai-compat`（本地 vLLM VLM，图像/视频评测，
   需 :8030 服务）或 `judge.deepseek-text`（DeepSeek 官方 API，文本评测如
   script_judge，不占 GPU；误配到媒体评测会被模态守卫响亮拒绝）
+- 阶段级裁判路由：`judge.stages.{script_judge|script_optimize|segment_judge|cross_judge}`
+  覆盖默认裁判（story_smoke 已把 script_judge 路由到 deepseek-text）
 - script 适配器二选一：`script.deepseek-v4-flash`（官方 API，自带计费）或
   `script.openai-compat`（任意 OpenAI 兼容端点；未配单价时 billing=unpriced）
 - 快速基建冒烟：`tasks/story_smoke.yaml`（2 段×20 步，完整管线降档时长）

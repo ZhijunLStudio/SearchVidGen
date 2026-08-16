@@ -1245,3 +1245,64 @@ class TestDeepSeekScriptSeamRefactor:
         assert art.meta.cost_usd > 0
         prompt = captured["create"]["messages"][1]["content"]
         assert "共 2 个分镜" in prompt
+
+
+@register("judge.route-fake")
+class _RouteFakeJudge:
+    name = "judge.route-fake"
+    capabilities = {"frame_sampling": False}
+    modalities = ["text"]
+    def __init__(self):
+        pass
+    def judge(self, media, criteria, workdir, **kw):
+        workdir.mkdir(parents=True, exist_ok=True)
+        path = Path(workdir) / "j.json"
+        path.write_text(json.dumps({"scores": {}, "feedback": "pass"}), encoding="utf-8")
+        return Artifact(kind="scores", path=path, meta=ArtifactMeta(adapter=self.name),
+                        payload={"scores": {}, "feedback": "pass"})
+
+
+class TestPerStageJudgeRouting:
+    def test_config_stages_validation(self):
+        cfg = {
+            "task_name": "t",
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.text-only", "params": {}},
+                "context": {"chain_mode": "none", "anchor_refs": []},
+            },
+            "judge": {
+                "adapter": "judge.cap-test", "params": {},
+                "stages": {"script_judge": {"adapter": "judge.route-fake", "params": {}}},
+            },
+        }
+        assert validate_task(cfg) is not None
+        bad = dict(cfg)
+        bad["judge"]["stages"]["nosuch_stage"] = {"adapter": "judge.route-fake"}
+        with pytest.raises(ConfigError, match="未知阶段键"):
+            validate_task(bad)
+
+    def test_director_routes_stages(self, tmp_path):
+        from vidharness.consumers.segment_director import SegmentDirector
+        cfg = {
+            "task_name": "t",
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.text-only", "params": {}},
+                "context": {"chain_mode": "none", "anchor_refs": []},
+            },
+            "judge": {
+                "adapter": "judge.cap-test", "params": {},
+                "stages": {"script_judge": {"adapter": "judge.route-fake", "params": {}}},
+            },
+        }
+        exp = Experiment(task="t", base_dir=tmp_path)
+        d = SegmentDirector(exp, cfg)
+        assert d.judges["script_judge"].name == "judge.route-fake"    # 文本评测走覆盖
+        assert d.judges["segment_judge"].name == "judge.cap-test"     # 媒体评测走默认
+        assert d.judges["cross_judge"].name == "judge.cap-test"
+
+    def test_director_without_stages_defaults_everywhere(self, tmp_path):
+        from vidharness.consumers.segment_director import SegmentDirector
+        d = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        assert all(j.name == "judge.cap-test" for j in d.judges.values())

@@ -57,6 +57,19 @@ class SegmentDirector:
 
         self.judge = instantiate(config["judge"]["adapter"],
                                  config["judge"].get("params", {}), context="judge")
+        # 阶段级裁判路由（E16 待办①）：文本评测阶段（script_judge/optimize）
+        # 可覆盖为 text-only 裁判（如 DeepSeek API），消除对 VLM 服务就绪的依赖；
+        # 媒体评测阶段（segment/cross）默认用主裁判。
+        self.judges: Dict[str, Any] = {}
+        stages_cfg = (config.get("judge") or {}).get("stages") or {}
+        for key in ("script_judge", "script_optimize", "segment_judge", "cross_judge"):
+            block = stages_cfg.get(key)
+            if block:
+                self.judges[key] = instantiate(
+                    block["adapter"], block.get("params", {}),
+                    context=f"judge.stages.{key}")
+            else:
+                self.judges[key] = self.judge
         # 经验记忆：环境反馈在此积累，跨任务泛化（无领域模板）
         from ..core.memory import ExperienceMemory
         mem_cfg = config.get("memory", {})
@@ -77,7 +90,7 @@ class SegmentDirector:
         if opt_cfg:
             from .script_optimizer import ScriptOptimizer
             opt = ScriptOptimizer(
-                self.script_adapter, self.judge, self.memory, self.exp,
+                self.script_adapter, self.judges["script_judge"], self.memory, self.exp,
                 rounds=int(opt_cfg.get("rounds", 2)),
                 candidates=int(opt_cfg.get("candidates", 2)),
                 target_score=float(opt_cfg.get("target_score", 7.5)),
@@ -124,7 +137,7 @@ class SegmentDirector:
                                             f"{_json.dumps(art.payload, ensure_ascii=False)}")
                         for c in crit]
             try:
-                verdict = run_judge(self.judge, [], embedded,
+                verdict = run_judge(self.judges["script_judge"], [], embedded,
                                     self.exp.artifacts_dir / "judge", exp=self.exp)
                 rec = {"attempt": attempt, "artifact": str(art.path), **verdict}
                 self.exp.save_eval("script_judge", [rec])
@@ -173,7 +186,7 @@ class SegmentDirector:
                 elif chain_mode == "ref":
                     req.refs = [last_frame] + anchor_refs   # 软衔接：末帧作为参考图
             art, history = run_with_judge(
-                self.generator, self.judge,
+                self.generator, self.judges["segment_judge"],
                 self._criteria("segment_judge"), self._retry("segment_retry"),
                 {"req": req},
                 lambda a: [a.path],
@@ -200,7 +213,7 @@ class SegmentDirector:
                        "error": f"抽帧失败: last={prev_last}, first={cur_first}"}
                 records.append(rec)
                 continue
-            verdict = run_judge(self.judge, [prev_last, cur_first],
+            verdict = run_judge(self.judges["cross_judge"], [prev_last, cur_first],
                                 cross_crit, self.exp.artifacts_dir / "judge",
                                 exp=self.exp)
             rec = {"segment_pair": [i, i + 1], **verdict}
@@ -233,7 +246,7 @@ class SegmentDirector:
         print(f"▶ [2/5] 逐段生成+评测 ({self.generator.name})")
         videos = stage("segments", lambda: self.stage_segments(script))
 
-        print(f"▶ [3/5] 跨段一致性评测 ({self.judge.name})")
+        print(f"▶ [3/5] 跨段一致性评测 ({self.judges['cross_judge'].name})")
         stage("cross_consistency", lambda: self.stage_cross_consistency(videos, script))
 
         print("▶ [4/5] 成片总装")

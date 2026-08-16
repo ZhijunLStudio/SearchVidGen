@@ -16,6 +16,9 @@ CHAIN_MODES = ("none", "hard", "ref")
 CRITERIA_FIELDS = ("name", "question", "weight", "min_score", "aliases")
 RETRY_FIELDS = ("max_attempts", "inject_feedback", "feedback_prefix")
 
+# judge.stages 允许的阶段键（阶段级裁判路由：文本评测可指向 text-only 裁判）
+JUDGE_STAGE_KEYS = ("script_judge", "script_optimize", "segment_judge", "cross_judge")
+
 # 顶层/管线允许键（未知键 fail loud）
 TASK_KEYS = {
     "task_name", "segments", "brief", "pipeline", "judge",
@@ -47,9 +50,11 @@ def _expect_keys(cfg: Dict[str, Any], path: str, allowed: Any) -> None:
             f"拼写错误会被静默忽略，这里拒绝启动")
 
 
-def _check_adapter_block(block: Dict[str, Any], path: str, need_route_ok: bool = False) -> None:
+def _check_adapter_block(block: Dict[str, Any], path: str, need_route_ok: bool = False,
+                         extra_allowed: tuple = ()) -> None:
     _expect_type(block, path, dict)
     allowed = set(_ADAPTER_BLOCK_KEYS) if need_route_ok else {"adapter", "params"}
+    allowed |= set(extra_allowed)
     _expect_keys(block, path, allowed)
     if "adapter" not in block and "route" not in block:
         raise ConfigError(f"{path}: 缺少 adapter（或 route）")
@@ -115,7 +120,16 @@ def validate_task(cfg: Dict[str, Any]) -> Dict[str, Any]:
     if "anchor_refs" in ctx:
         _expect_type(ctx["anchor_refs"], "pipeline.context.anchor_refs", list)
 
-    _check_adapter_block(cfg.get("judge", {}), "judge")
+    _check_adapter_block(cfg.get("judge", {}), "judge", extra_allowed=("stages",))
+    # 阶段级裁判路由（judge.stages：某阶段覆盖默认裁判，如 script_judge→text-only）
+    stages = cfg.get("judge", {}).get("stages")
+    if stages is not None:
+        _expect_type(stages, "judge.stages", dict)
+        for key, block in stages.items():
+            if key not in JUDGE_STAGE_KEYS:
+                raise ConfigError(
+                    f"judge.stages: 未知阶段键 '{key}'（允许: {list(JUDGE_STAGE_KEYS)}）")
+            _check_adapter_block(block, f"judge.stages.{key}")
 
     if "script_optimize" in cfg:
         so = cfg["script_optimize"]
