@@ -191,6 +191,14 @@ class SegmentDirector:
             if existing:
                 seg_videos.append(existing.path)
                 last_frame = self._extract_last_frame(existing.path, self.exp)
+                # 续跑缓存命中：若该段从未有评测记录（原 run 在评测前
+                # 中断，如裁判服务不可达），记可见占位——证据缺口不
+                # 静默（E45 实测：裁判宕机中断续跑后 seg01 无评测记录）
+                if not self._has_seg_judge_record(name):
+                    self.exp.save_eval("segments", [{
+                        "segment": name,
+                        "error": "缓存命中但无评测记录（原 run 评测前中断，未补评）"}])
+                    print(f"   ⚠️ {name} 缓存命中但无评测记录（原 run 中断），已记占位")
                 continue
 
             req = GenRequest(
@@ -309,6 +317,23 @@ class SegmentDirector:
         return final
 
     # ---- 工具 ----
+    def _has_seg_judge_record(self, name: str) -> bool:
+        """该段是否已有评测记录（缓存命中时判断证据完整性）。"""
+        import json as _json
+        p = self.exp.eval_dir / "segments.json"
+        if not p.exists():
+            return False
+        try:
+            recs = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(recs, list):
+            return False
+        marker = f"{name}."
+        return any(isinstance(r, dict) and (
+            marker in str(r.get("artifact", "")) or r.get("segment") == name)
+            for r in recs)
+
     def _anchor_refs(self) -> List[Path]:
         refs = self.cfg.get("pipeline", {}).get("context", {}).get("anchor_refs", [])
         return [Path(r) for r in refs if Path(r).exists()]

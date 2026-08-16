@@ -2650,3 +2650,43 @@ class TestMemoryFileVisibility:
         exp2 = Experiment(task="t", base_dir=tmp_path / "x")
         SegmentDirector(exp2, {k: v for k, v in cfg.items() if k != "memory"})
         assert "warning" not in _event_types(exp2)
+
+
+class TestCachedSegmentJudgeGap:
+    """E45：续跑缓存命中但无评测记录 → 记占位 error，不静默。"""
+
+    def _prep(self, tmp_path, monkeypatch):
+        from vidharness.consumers.segment_director import SegmentDirector
+        director = TestSegmentDirectorCapabilities()._make_director(tmp_path, "none")
+        (director.exp.artifacts_dir / "segments").mkdir(parents=True, exist_ok=True)
+        cached = director.exp.artifacts_dir / "segments" / "seg01.mp4"
+        cached.write_bytes(b"fake")
+        director.exp.save_artifact("segments", Artifact(
+            kind="video", path=cached,
+            meta=ArtifactMeta(adapter="generator.text-only")), name="seg01")
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        script = {"segments": [{"video_prompt": "p1", "narration": "n"},
+                               {"video_prompt": "p2", "narration": "n"}]}
+        return director, script
+
+    def _errs(self, director):
+        return [r.get("error", "") for r in json.loads(
+            (director.exp.eval_dir / "segments.json").read_text(encoding="utf-8"))]
+
+    def test_cached_segment_without_judge_record_is_visible(self, tmp_path, monkeypatch):
+        director, script = self._prep(tmp_path, monkeypatch)
+        videos = director.stage_segments(script)
+        assert len(videos) == 2
+        assert any("无评测记录" in e for e in self._errs(director))
+
+    def test_cached_segment_with_record_no_placeholder(self, tmp_path, monkeypatch):
+        director, script = self._prep(tmp_path, monkeypatch)
+        cached = director.exp.artifacts_dir / "segments" / "seg01.mp4"
+        director.exp.save_eval("segments", [{"attempt": 1, "artifact": str(cached),
+                                             "scores": {"与指令一致性": 8.0}}])
+        videos = director.stage_segments(script)
+        assert len(videos) == 2
+        assert not any("无评测记录" in e for e in self._errs(director))
