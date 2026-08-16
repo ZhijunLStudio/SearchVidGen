@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>VidHarness Leaderboard</title>
+<style>
+body { font-family: system-ui; margin: 2em; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 6px 10px; font-size: 14px; text-align: center; }
+th { background: #f5f5f5; }
+a { color: #2563eb; }
+</style></head><body>
+<h1>VidHarness Leaderboard</h1>
+<p>生成时间：<span id="t"></span>　任务数：5</p>
+<p>⚠️ 混用裁判的任务：story_ref2va_check: [&#x27;judge.deepseek-text&#x27;, &#x27;judge.openai-compat&#x27;]；story_smoke: [&#x27;judge.deepseek-text&#x27;, &#x27;judge.openai-compat&#x27;]——评分尺度不可直接对比（E24/E25），请参考校准数据。</p>
+<h2>任务总览（每任务最新 run）</h2>
+<table>
+<tr><th>任务</th><th>runs</th><th>最新 run</th><th>模型</th><th>裁判</th><th>关键评分</th><th>成本(USD)</th></tr>
+<tr><td><a href='story_canvas.md'>story_canvas</a></td><td>3</td><td>20260816_095240_417bb4</td><td>generator.minimax-h3-local:MiniMax-H3-Base</td><td>-</td><td>与指令一致性 10.0 / 画面质量 10.0</td><td>$0.0002</td></tr><tr><td><a href='story_fl2va_check.md'>story_fl2va_check</a></td><td>2</td><td>20260816_112559_5486bd</td><td>generator.minimax-h3-local:MiniMax-H3-Base</td><td>-</td><td>与指令一致性 10.0 / 画面质量 10.0 / 跨段一致性 10.0 / 叙事推进 1.0</td><td>$0.0004</td></tr><tr><td><a href='story_ref2va_check.md'>story_ref2va_check</a></td><td>1</td><td>20260816_124438_f16c96</td><td>generator.minimax-h3-local:MiniMax-H3-Base</td><td>judge.deepseek-text, judge.openai-compat</td><td>与指令一致性 10.0 / 画面质量 10.0 / 跨段一致性 10.0 / 叙事推进 10.0</td><td>$0.0001</td></tr><tr><td><a href='story_short.md'>story_short</a></td><td>6</td><td>20260815_114851_5fc68e</td><td>generator.minimax-h3-local:MiniMax-H3-Base</td><td>-</td><td>与指令一致性 10.0 / 画面质量 10.0 / 音效场景相符 10.0 / 跨段一致性 7.67 / 叙事推进 10.0</td><td>$0.0003</td></tr><tr><td><a href='story_smoke.md'>story_smoke</a></td><td>2</td><td>20260816_120135_4e5c56</td><td>generator.minimax-h3-local:MiniMax-H3-Base</td><td>judge.deepseek-text, judge.openai-compat</td><td>与指令一致性 10.0 / 画面质量 10.0 / 跨段一致性 3.0 / 叙事推进 3.0</td><td>$0.0004</td></tr>
+</table>
+<h2>跨裁判校准（calibration/）</h2><table><tr><th>裁判对</th><th>维度</th><th>偏移(a-b)</th><th>样本</th></tr><tr><td>judge.openai-compat vs judge.deepseek-text</td><td>叙事完整</td><td>0.5</td><td>n=4</td></tr><tr><td>judge.openai-compat vs judge.deepseek-text</td><td>旁白自然</td><td>0.5</td><td>n=4</td></tr><tr><td>judge.openai-compat vs judge.deepseek-text</td><td>可生成性</td><td>-1.5</td><td>n=4</td></tr></table>
+<script>document.getElementById('t').textContent = new Date().toLocaleString();</script>
+</body></html>

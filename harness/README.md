@@ -125,6 +125,8 @@ harness/vidharness/
    模式（E25）、优化增益诚实审计（E26）
 14. ✅ 变体回归套件（8-16）：vh regress 状态表（最新 run/关键分/配置漂移
    检测）+ --run 执行；四变体 check 任务全部 ✅ 一致（E27 收尾）
+15. ✅ leaderboard 页面化（8-16）：vh leaderboard --all 导出全部任务 +
+   index.html 总览（每任务最新 run/混用裁判警告/校准摘要）
 12. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验
 13. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 

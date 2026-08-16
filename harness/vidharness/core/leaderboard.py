@@ -68,6 +68,107 @@ def export(base_dir: Path, task: str, out_dir: Path) -> Tuple[Path, Path, Dict[s
     return json_path, md_path, diff
 
 
+def export_all(base_dir: Path, out_dir: Path) -> Dict[str, Any]:
+    """导出 experiments 下所有任务的基线并渲染 index.html（公开页面雏形）。"""
+    exported = {}
+    tasks = sorted(d.name for d in Path(base_dir).iterdir()
+                   if d.is_dir() and any((d / r / "manifest.json").exists()
+                                         for r in d.iterdir() if r.is_dir()))
+    for task in tasks:
+        _, _, diff = export(base_dir, task, out_dir)
+        exported[task] = diff
+    index = render_index(out_dir)
+    return {"tasks": exported, "index": str(index)}
+
+
+def _latest_run(data: Dict[str, Any]) -> Dict[str, Any]:
+    rows = sorted(data.get("runs", []), key=lambda r: r.get("finished_at") or "", reverse=True)
+    return rows[0] if rows else {}
+
+
+def _load_calibrations(out_dir: Path) -> List[Dict[str, Any]]:
+    calib_dir = out_dir.parent / "calibration"
+    cals = []
+    for f in sorted(calib_dir.glob("*.json")) if calib_dir.exists() else []:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and "dims" in d:
+                cals.append(d)
+        except Exception:
+            continue
+    return cals
+
+
+def render_index(out_dir: Path) -> Path:
+    """聚合总览页：每任务最新 run 概览 + 混用裁判警告 + 校准数据摘要。"""
+    import html as _html
+    esc = _html.escape
+    tasks = sorted(f.stem for f in out_dir.glob("*.json") if f.stem != "index")
+    rows = ""
+    for task in tasks:
+        data = _load_baseline(out_dir / f"{task}.json")
+        if not data.get("runs"):
+            rows += f"<tr><td>{esc(task)}</td><td colspan=7>（无基线数据）</td></tr>"
+            continue
+        r = _latest_run(data)
+        seg = r.get("stage_scores", {}).get("segments", {})
+        cross = r.get("stage_scores", {}).get("cross_consistency", {})
+        key = " / ".join(f"{k} {v}" for k, v in {**seg, **cross}.items()) or "-"
+        judges = ", ".join(r.get("judge_adapters") or ["-"])
+        models = ", ".join(r.get("models") or ["-"])
+        rows += (f"<tr><td><a href='{esc(task)}.md'>{esc(task)}</a></td>"
+                 f"<td>{data['run_count']}</td><td>{esc(str(r.get('run_id', '-')))}</td>"
+                 f"<td>{esc(models)}</td><td>{esc(judges)}</td>"
+                 f"<td>{esc(key)}</td>"
+                 f"<td>${r.get('total_cost_usd', 0):.4f}</td></tr>")
+    # 混用裁判总警告
+    mixed = []
+    for task in tasks:
+        data = _load_baseline(out_dir / f"{task}.json")
+        judges = {j for r in data.get("runs", []) for j in r.get("judge_adapters", [])}
+        if len(judges) > 1:
+            mixed.append(f"{task}: {sorted(judges)}")
+    mixed_note = ""
+    if mixed:
+        mixed_note = ("<p>⚠️ 混用裁判的任务：" + esc("；".join(mixed)) +
+                      "——评分尺度不可直接对比（E24/E25），请参考校准数据。</p>")
+    # 校准摘要
+    calib_rows = ""
+    for c in _load_calibrations(out_dir):
+        for dim, v in c.get("dims", {}).items():
+            calib_rows += (f"<tr><td>{esc(c['judge_a'])} vs {esc(c['judge_b'])}</td>"
+                           f"<td>{esc(dim)}</td><td>{v['mean_offset_a_minus_b']}</td>"
+                           f"<td>n={v['n']}</td></tr>")
+    calib_block = ""
+    if calib_rows:
+        calib_block = ("<h2>跨裁判校准（calibration/）</h2>"
+                       "<table><tr><th>裁判对</th><th>维度</th><th>偏移(a-b)</th><th>样本</th></tr>"
+                       f"{calib_rows}</table>")
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>VidHarness Leaderboard</title>
+<style>
+body {{ font-family: system-ui; margin: 2em; }}
+table {{ border-collapse: collapse; width: 100%; }}
+td, th {{ border: 1px solid #ccc; padding: 6px 10px; font-size: 14px; text-align: center; }}
+th {{ background: #f5f5f5; }}
+a {{ color: #2563eb; }}
+</style></head><body>
+<h1>VidHarness Leaderboard</h1>
+<p>生成时间：<span id="t"></span>　任务数：{len(tasks)}</p>
+{mixed_note}
+<h2>任务总览（每任务最新 run）</h2>
+<table>
+<tr><th>任务</th><th>runs</th><th>最新 run</th><th>模型</th><th>裁判</th><th>关键评分</th><th>成本(USD)</th></tr>
+{rows}
+</table>
+{calib_block}
+<script>document.getElementById('t').textContent = new Date().toLocaleString();</script>
+</body></html>"""
+    out = out_dir / "index.html"
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
 def _fmt_scores(scores: Dict[str, float]) -> str:
     return " / ".join(f"{k} {v}" for k, v in scores.items()) or "-"
 

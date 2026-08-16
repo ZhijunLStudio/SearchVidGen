@@ -65,6 +65,7 @@ python -m vidharness.cli adapters --verbose                        # 能力+参�
 
 # leaderboard 基线（leaderboards/ 入库追踪；跑完实验后更新并提交）
 python -m vidharness.cli leaderboard story_short
+python -m vidharness.cli leaderboard --all          # 全部任务 + index.html 总览
 
 # 剧本优化闭环量化（纯 API 无 GPU；E26 基线：off 7.94 / on 8.06，JSON 模式后）
 python scripts/compare_script_optimize.py --query "..." --trials 3

@@ -1700,3 +1700,38 @@ class TestRegressionSuite:
                             {"task_file": "b.yaml", "task_name": "tB", "run_id": None,
                              "scores": {}, "drift": None}])
         assert "✅ 一致" in md and "未跑过" in md and "与指令一致性 9.0" in md
+
+
+class TestLeaderboardIndex:
+    def test_export_all_and_index(self, tmp_path):
+        from vidharness.core.leaderboard import export_all, _load_baseline
+        # 任务 tA：judge.deepseek-text
+        exp = _build_exp(tmp_path)
+        (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
+        exp.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j.json",
+            meta=ArtifactMeta(adapter="judge.deepseek-text")))
+        # 同任务再加第二个裁判（阶段路由的真实形态）→ 触发混用警告
+        (Path(tmp_path) / "j3.json").write_text("{}", encoding="utf-8")
+        exp.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j3.json",
+            meta=ArtifactMeta(adapter="judge.openai-compat")))
+        exp.finalize()
+        # 任务 tB：judge.openai-compat
+        exp2 = Experiment(task="tB", base_dir=tmp_path, run_id="r2")
+        (Path(tmp_path) / "v2.mp4").write_bytes(b"fake")
+        exp2.save_artifact("segments", Artifact(
+            kind="video", path=Path(tmp_path) / "v2.mp4",
+            meta=ArtifactMeta(adapter="generator.x", elapsed_s=1.0)), name="s2")
+        (Path(tmp_path) / "j2.json").write_text("{}", encoding="utf-8")
+        exp2.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j2.json",
+            meta=ArtifactMeta(adapter="judge.openai-compat")))
+        exp2.finalize()
+        out = tmp_path / "lb"
+        result = export_all(tmp_path, out)
+        assert set(result["tasks"]) == {"t", "tB"}   # _build_exp 的任务名是 t
+        index = (out / "index.html").read_text(encoding="utf-8")
+        assert "t" in index and "tB" in index
+        assert "混用裁判" in index           # 两任务裁判不同 → 总警告
+        assert "judge.deepseek-text" in index and "judge.openai-compat" in index
