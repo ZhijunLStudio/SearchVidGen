@@ -27,7 +27,7 @@ from .registry import check_capabilities, instantiate, resolve_provider
 # E4 实测：A800 双卡 30 步 8s@768p 单段 ~12-18 分钟；12 为规划下限常数
 _DEFAULT_LOCAL_MIN_PER_SEG = 12.0
 
-BENCH_KEYS = ("base", "matrix", "local_min_per_seg")
+BENCH_KEYS = ("base", "matrix", "local_min_per_seg", "repeats")
 
 
 class BenchError(RuntimeError):
@@ -178,11 +178,18 @@ def plan(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
     base = yaml.safe_load(base_path.read_text(encoding="utf-8"))
     local_min = float(bench.get("local_min_per_seg", _DEFAULT_LOCAL_MIN_PER_SEG))
     cells = expand_matrix(base, bench["matrix"])
+    repeats = int(bench.get("repeats", 1))
+    if repeats < 1:
+        raise BenchError("bench.repeats 必须是正整数")
     plan_rows: List[Dict[str, Any]] = []
     for label, cfg in cells:
-        caps = validate_cell(label, cfg)
-        est = estimate_cost(cfg, caps, local_min)
-        plan_rows.append({"label": label, "cfg": cfg, "caps": caps, "estimate": est})
+        # 重复试验：每格 N 次（格标签加 .r{n}，统计口径 mean±std 的基建）
+        for r in range(1, repeats + 1):
+            cell_label = f"{label}.r{r}" if repeats > 1 else label
+            caps = validate_cell(cell_label, cfg)
+            est = estimate_cost(cfg, caps, local_min)
+            plan_rows.append({"label": cell_label, "cfg": cfg,
+                              "caps": caps, "estimate": est})
     return plan_rows
 
 

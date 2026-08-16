@@ -2188,3 +2188,25 @@ class TestCostsReport:
         monkeypatch.chdir(tmp_path)
         data = build_cost_report(Path("."))
         assert [r["task"] for r in data["tasks"]] == ["t"]
+
+
+class TestBenchRepeats:
+    def test_plan_repeats(self, tmp_path):
+        from vidharness.core.bench import plan
+        cfg = TestBench()._base_cfg()
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        spec = {"bench": {"base": str(base),
+                          "matrix": [{"pipeline.generator.params.steps": [20]}],
+                          "repeats": 2}}
+        rows = plan(spec)
+        assert [r["label"] for r in rows] == ["20.r1", "20.r2"]
+
+    def test_plan_repeats_invalid(self, tmp_path):
+        from vidharness.core.bench import plan, BenchError
+        cfg = TestBench()._base_cfg()
+        base = tmp_path / "base.yaml"
+        base.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        with pytest.raises(BenchError, match="正整数"):
+            plan({"bench": {"base": str(base), "matrix": [{"segments": [1]}],
+                            "repeats": 0}})

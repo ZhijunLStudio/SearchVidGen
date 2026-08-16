@@ -5,7 +5,6 @@ API 成本（total_cost_usd）、GPU 卡时、估算 GPU 成本、总成本。
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -54,9 +53,3 @@ def render_cost_table(data: Dict[str, Any]) -> str:
     lines.append(f"| **总计** | | {t['api_cost_usd']:.4f} | {t['gpu_hours']} | | "
                  f"**{t['total_usd_est']:.3f}** |")
     return "\n".join(lines)
-
-
-def report_costs(base_dir: Path, out: Path, gpu_price_usd_per_hour: float = 1.2) -> Dict[str, Any]:
-    data = build_cost_report(base_dir, gpu_price_usd_per_hour)
-    out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return data

@@ -64,6 +64,8 @@ python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..." --dry-run
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..."
 # 格级断点续跑：已完成格自动跳过、未完成格续跑（格身份 = 标签+配置+query）；
 # 中途崩溃后原命令重跑即可接着跑
+# 统计比较：bench spec 加 repeats: N（每格 N 次重复，标签 .r1..rN，
+# leaderboard 可按格聚合 mean±std）
 
 # 本地 / 官方 API 对比（唯一前提：export MINIMAX_API_KEY=...；
 # 无 key 也可 --dry-run 规划预估）
