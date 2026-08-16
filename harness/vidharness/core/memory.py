@@ -111,6 +111,50 @@ class ExperienceMemory:
                     int(item.get("count", 0)) >= self.promote_threshold:
                 item["promoted"] = True
 
+    def consolidate(self, canonicalize) -> Dict[str, Any]:
+        """语义聚类合并（E33：E32 的语义近重复缺口）。
+
+        canonicalize: callable(complaint) -> 规范短语（LLM 或规则实现）。
+        对未提升条目：按规范短语归并（count 累加、sources 截断），
+        达到 promote_threshold 即提升；写回并返回统计。
+        无标签的条目原样保留（不丢弃数据）；本方法纯逻辑、无 LLM 依赖。
+        """
+        groups: Dict[str, Dict[str, Any]] = {}
+        unlabeled: List[Dict[str, Any]] = []
+        for item in self._items:
+            if item.get("kind") == "experience" or item.get("promoted"):
+                continue
+            label = str(canonicalize(item["complaint"]) or "").strip()
+            if not label:
+                unlabeled.append(item)
+                continue
+            if label in groups:
+                m = groups[label]
+                m["count"] = int(m.get("count", 0)) + int(item.get("count", 1))
+                m["sources"] = (m.get("sources") or [])[-_MAX_SOURCES + 1:] + \
+                    (item.get("sources") or [])[-_MAX_SOURCES:]
+            else:
+                m = dict(item)
+                m["key"] = _normalize(label)
+                m["complaint"] = label
+                groups[label] = m
+        changed = 0
+        promoted = 0
+        for label, m in groups.items():
+            if int(m.get("count", 0)) >= self.promote_threshold:
+                m["promoted"] = True
+                m["promoted_at"] = time.time()
+                promoted += 1
+            changed += 1
+        # 归并结果替换未提升条目；无标签条目与已提升/experience 原样保留
+        kept = [i for i in self._items
+                if i.get("kind") == "experience" or i.get("promoted")]
+        self._items = kept + unlabeled + list(groups.values())
+        self._flush()
+        return {"before": len(self._items), "after": len(self._items),
+                "groups": changed, "promoted": promoted,
+                "unlabeled": len(unlabeled)}
+
     def _flush(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(

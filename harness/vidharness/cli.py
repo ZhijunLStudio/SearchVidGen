@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any, Dict
 import json
 from pathlib import Path
 
@@ -148,6 +149,37 @@ def cmd_scaffold(args):
     print("  1. 实现协议方法 + 填写 capabilities/param_schema")
     print("  2. providers/__init__.py 加 import（加载即注册）")
     print(f"  3. vh adapters 确认注册；任务 YAML 引用 {args.seam}.{args.name}")
+
+
+def cmd_memory_consolidate(args):
+    """语义聚类合并经验记忆（E33）：用 script 提供者（DeepSeek）把语义
+    近重复的反馈归纳为规范短语，达到阈值的提升为跨任务经验。纯 API。"""
+    from .core.memory import ExperienceMemory
+    from .core.registry import load_builtin_adapters, instantiate
+    load_builtin_adapters()
+    script_adapter = instantiate("script.deepseek-v4-flash",
+                                 {"model": "deepseek-chat", "temperature": 0.0})
+
+    def canonicalize(complaint: str) -> str:
+        try:
+            art = script_adapter.generate(
+                query=f"把这条视频生成反馈归纳成 10 字以内的规范问题短语"
+                      f"（例：叙事缺乏起承转合 / 旁白不口语化）：{complaint}",
+                template={"brief": "只输出 JSON：{\"label\": \"<短语>\"}，"
+                                   "不要任何其他文字", "segments": 1},
+                workdir=Path("/tmp/vh-consolidate"))
+            label = str((art.payload or {}).get("label", "")).strip()
+            return label[:20] if label else ""
+        except Exception as e:
+            print(f"  ⚠️ 归纳失败（{type(e).__name__}），跳过该条")
+            return ""
+
+    mem = ExperienceMemory(Path(args.output) / "_memory.jsonl",
+                           promote_threshold=args.threshold)
+    stats = mem.consolidate(canonicalize)
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+    for item in mem.experience_lines():
+        print("  ✨ 经验:", item[:50])
 
 
 def cmd_feedback(args):
@@ -301,6 +333,12 @@ def main(argv=None):
     pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")
     pf.add_argument("--output", default="experiments", help="实验输出根目录")
     pf.set_defaults(fn=cmd_feedback)
+
+    pmc = sub.add_parser("memory-consolidate",
+                         help="语义聚类合并经验记忆（E33，纯 API 无 GPU）")
+    pmc.add_argument("--output", default="experiments", help="实验输出根目录")
+    pmc.add_argument("--threshold", type=int, default=2, help="提升阈值")
+    pmc.set_defaults(fn=cmd_memory_consolidate)
 
     prp = sub.add_parser("report", help="生成实验对比报告（--run 生成单 run 详情页）")
     prp.add_argument("task", help="任务名（如 story_short）")

@@ -2108,3 +2108,42 @@ class TestFeedbackCleaning:
         it = mem._items[0]
         assert it["complaint"] == "叙事缺乏转折" and it["count"] == 2 and it["promoted"] is True
         assert len(mem.load_warnings) == 1               # 噪声行记入警告
+
+
+class TestMemoryConsolidate:
+    def test_consolidate_groups_and_promotes(self, tmp_path):
+        """E33：语义近重复按规范短语归并，达标提升。"""
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=2)
+        mem.add("叙事仅有单一场景，缺乏起承转合", source="a")
+        mem.add("叙事缺乏转折与高潮，仅两个片段", source="b")
+        mem.add("旁白太肉麻", source="c")
+        mem.add("旁白不够口语化", source="d")
+        labels = {
+            "叙事仅有单一场景，缺乏起承转合": "叙事缺乏起承转合",
+            "叙事缺乏转折与高潮，仅两个片段": "叙事缺乏起承转合",
+            "旁白太肉麻": "旁白不口语化",
+            "旁白不够口语化": "旁白不口语化",
+        }
+        stats = mem.consolidate(lambda c: labels[c])
+        assert stats["after"] == 2 and stats["promoted"] == 2
+        assert set(mem.experience_lines()) == {"叙事缺乏起承转合", "旁白不口语化"}
+
+    def test_consolidate_keeps_promoted(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=2)
+        mem.add_experience("既有经验", source="manual")
+        mem.add("新反馈", source="a")
+        stats = mem.consolidate(lambda c: "新反馈")
+        assert stats["after"] == 2
+        assert "既有经验" in mem.experience_lines()
+        assert "新反馈" not in mem.experience_lines()   # count 1 未达标
+
+    def test_consolidate_preserves_unlabeled(self, tmp_path):
+        """无标签条目不得被丢弃（数据保全）。"""
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=2)
+        mem.add("无法归纳的条目", source="a")
+        mem.add("另一条", source="b")
+        stats = mem.consolidate(lambda c: "")
+        assert stats["unlabeled"] == 2 and len(mem._items) == 2
