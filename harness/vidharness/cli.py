@@ -108,6 +108,14 @@ def cmd_feedback(args):
 
 def cmd_report(args):
     from .core.report import report
+    if args.run:
+        from .core.report import render_run_html
+        run_dir = Path(args.output) / args.task / args.run
+        if not run_dir.exists():
+            raise SystemExit(f"找不到 run 目录: {run_dir}")
+        out = render_run_html(run_dir, run_dir / "report.html")
+        print(json.dumps({"html": str(out)}, ensure_ascii=False, indent=2))
+        return
     base = Path(args.output)
     html = base / f"report_{args.task}.html"
     result = report(base, args.task, html)
@@ -205,8 +213,9 @@ def main(argv=None):
     pf.add_argument("--output", default="experiments", help="实验输出根目录")
     pf.set_defaults(fn=cmd_feedback)
 
-    prp = sub.add_parser("report", help="生成实验对比报告")
+    prp = sub.add_parser("report", help="生成实验对比报告（--run 生成单 run 详情页）")
     prp.add_argument("task", help="任务名（如 story_short）")
+    prp.add_argument("--run", default=None, help="run_id：生成单 run 详情页")
     prp.add_argument("--output", default="experiments", help="实验输出根目录")
     prp.set_defaults(fn=cmd_report)
 

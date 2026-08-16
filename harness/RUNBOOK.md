@@ -48,6 +48,7 @@ python -m vidharness.cli run tasks/bench_chain_ref.yaml --query "..." --output e
 
 # 报告 / 对比（compare_chains 从每个 run 的 config.yaml 快照读衔接模式）
 python -m vidharness.cli report story_short --output experiments
+python -m vidharness.cli report story_short --run <run_id>   # 单 run 详情页（写入 run 目录）
 python scripts/compare_chains.py experiments/story_short
 python scripts/collect_evidence.py experiments/story_short/<run_id>
 

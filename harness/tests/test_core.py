@@ -948,3 +948,77 @@ class TestCollectStageAggregation:
         assert r["stage_scores"]["segments"]["与指令一致性"] == 7.0
         assert r["stage_passed"]["segments"] == {"passed": 1, "total": 3}
         assert r["passed_rate"] == pytest.approx(0.33)
+
+
+class TestExperienceMemory:
+    def test_promote_on_threshold(self, tmp_path):
+        """Bug#5 回归：重复反馈到达阈值必须提升为经验（此前 promoted 从不置位）。"""
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=2)
+        mem.add("旁白太肉麻，要真实朴素", source="run1/judge")
+        assert mem.experience_lines() == []          # 第一次不提升
+        mem.add("旁白太肉麻，要真实朴素！", source="run2/judge")   # 规范化后同 key
+        assert "旁白太肉麻，要真实朴素" in mem.experience_lines()
+        assert mem.recent_feedback() == []           # 提升后不再算待提升反馈
+
+    def test_threshold_one_promotes_first_add(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=1)
+        mem.add("镜头晃动", source="r1")
+        assert mem.experience_lines() == ["镜头晃动"]
+
+    def test_legacy_lines_load_and_upgrade(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        p = tmp_path / "_memory.jsonl"
+        # 旧格式：无 v 字段、无 promoted 字段
+        p.write_text(json.dumps({"key": "旧经验", "complaint": "旧经验",
+                                 "kind": "experience", "count": 3,
+                                 "sources": ["x"], "first_at": 1, "last_at": 1})
+                     + "\n", encoding="utf-8")
+        mem = ExperienceMemory(p)
+        assert mem.experience_lines() == ["旧经验"]
+        assert mem.load_warnings == []
+        # flush 后升级为 v=1
+        mem.add("新反馈", source="r1")
+        lines = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert all(l.get("v") == 1 for l in lines)
+
+    def test_corrupt_lines_skipped_with_warning(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        p = tmp_path / "_memory.jsonl"
+        p.write_text("not json\n" + json.dumps({"key": "k", "complaint": "c",
+                                                  "kind": "experience", "promoted": True}) + "\n",
+                     encoding="utf-8")
+        mem = ExperienceMemory(p)
+        assert len(mem.load_warnings) == 1 and "无法解析" in mem.load_warnings[0]
+        assert mem.experience_lines() == ["c"]
+
+    def test_sources_capped(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=99)
+        for i in range(7):
+            mem.add("同一问题", source=f"r{i}")
+        item = mem._items[0]
+        assert item["count"] == 7
+        assert item["sources"] == ["r2", "r3", "r4", "r5", "r6"]   # 只留最后 5 个
+
+
+class TestRunReport:
+    def test_render_run_html(self, tmp_path):
+        from vidharness.core.report import render_run_html
+        exp = _build_exp(tmp_path)
+        exp.save_eval("segments", [{"attempt": 2, "scores": {"与指令一致性": 9.0},
+                                    "passed": True, "score": 9.0, "feedback": "主体明确"}])
+        exp.finalize()
+        out = render_run_html(exp.root, exp.root / "report.html")
+        html = out.read_text(encoding="utf-8")
+        assert exp.run_id in html
+        assert "segments" in html and "config.yaml 存在" or "chain_mode" in html
+        assert "与指令一致性" in html          # 评测明细
+        assert "artifact.saved" in html        # 事件流
+        assert "generator_capabilities" in html or "query" in html
+
+    def test_render_run_html_missing_manifest(self, tmp_path):
+        from vidharness.core.report import render_run_html
+        with pytest.raises(RuntimeError, match="缺少 manifest"):
+            render_run_html(tmp_path, tmp_path / "report.html")

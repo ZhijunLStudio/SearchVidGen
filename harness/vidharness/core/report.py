@@ -145,3 +145,122 @@ def report(base_dir: Path, task: str, out_html: Path) -> Dict[str, Any]:
     runs = collect(base_dir, task)
     render_html(runs, out_html)
     return {"task": task, "runs": len(runs), "html": str(out_html)}
+
+
+def _event_summary(ev: Dict[str, Any]) -> str:
+    """事件流的一行摘要（详情页展示）。"""
+    t = ev.get("type", "?")
+    if t == "artifact.saved":
+        return f"{t}: {ev.get('stage')}/{Path(ev.get('entry', {}).get('path', '?')).name}"
+    if t == "eval.saved":
+        return f"{t}: {ev.get('stage')}"
+    if t == "retry":
+        return f"{t}: {ev.get('stage')}"
+    if t == "query.bound":
+        return f"{t}: {ev.get('query', '')[:60]}"
+    if t == "config.snapshotted":
+        return f"{t}: sha256={ev.get('sha256', '')[:12]}…"
+    if t == "manifest.set":
+        return f"{t}: {ev.get('key')}"
+    if t == "finalized":
+        return (f"{t}: gpu_hours={ev.get('local_gpu_hours')} "
+                f"cost_all=${ev.get('total_cost_usd_all')}")
+    return t
+
+
+def render_run_html(run_dir: Path, out: Path) -> Path:
+    """单 run 详情页：概览 / 配置 / 产物 / 评测明细 / 事件流。"""
+    import html as _html
+    run_dir = Path(run_dir)
+    manifest = _load_json(run_dir / "manifest.json")
+    if not manifest:
+        raise RuntimeError(f"缺少 manifest.json: {run_dir}")
+    esc = _html.escape
+
+    def kv(k: str, v: Any) -> str:
+        return f"<tr><td>{esc(k)}</td><td>{esc(str(v))}</td></tr>"
+
+    # ---- 概览 ----
+    summary = "".join(kv(k, v) for k, v in [
+        ("run_id", manifest.get("run_id")),
+        ("query", manifest.get("query")),
+        ("bench_cell", manifest.get("bench_cell")),
+        ("chain_mode", manifest.get("chain_mode")),
+        ("generator_capabilities", manifest.get("generator_capabilities")),
+        ("created_at", manifest.get("created_at")),
+        ("finished_at", manifest.get("finished_at")),
+        ("total_elapsed_s", manifest.get("total_elapsed_s")),
+        ("total_cost_usd", manifest.get("total_cost_usd")),
+        ("local_gpu_hours", manifest.get("local_gpu_hours")),
+        ("total_cost_usd_all", manifest.get("total_cost_usd_all")),
+        ("retries", manifest.get("retries")),
+    ] if v is not None)
+
+    # ---- 配置快照 ----
+    cfg_file = run_dir / "config.yaml"
+    cfg_text = esc(cfg_file.read_text(encoding="utf-8")) \
+        if cfg_file.exists() else "（无快照：2026-08-16 前旧 run）"
+
+    # ---- 产物表 ----
+    art_rows = ""
+    for stage, arts in manifest.get("stages", {}).items():
+        for a in arts:
+            meta = a.get("meta", {})
+            name = Path(a.get("path", "?")).name
+            art_rows += (
+                f"<tr><td>{esc(stage)}</td><td>{esc(name)}</td>"
+                f"<td>{esc(str(meta.get('adapter', '-')))}</td>"
+                f"<td>{esc(str(meta.get('model', '-')))}</td>"
+                f"<td>{meta.get('elapsed_s', 0):.1f}s</td>"
+                f"<td>${meta.get('cost_usd', 0):.4f}</td>"
+                f"<td>{esc(str(meta.get('seed')))}</td></tr>")
+
+    # ---- 评测明细 ----
+    eval_blocks = ""
+    eval_dir = run_dir / "eval"
+    for f in sorted(eval_dir.glob("*.json")) if eval_dir.exists() else []:
+        data = _load_json(f)
+        if isinstance(data, list):
+            body = "".join(
+                f"<pre>{esc(json.dumps(r, ensure_ascii=False, indent=2))}</pre>"
+                for r in data if isinstance(r, dict))
+        else:
+            body = f"<pre>{esc(json.dumps(data, ensure_ascii=False, indent=2))}</pre>"
+        eval_blocks += f"<h3>eval/{f.name}</h3>{body}"
+
+    # ---- 事件流（末尾 20 条）----
+    events_file = run_dir / "events.jsonl"
+    event_rows = ""
+    event_note = ""
+    if events_file.exists():
+        events = [json.loads(l) for l in events_file.read_text(encoding="utf-8").splitlines()
+                  if l.strip()]
+        event_note = f"共 {len(events)} 条事件（显示末尾 20 条）"
+        for ev in events[-20:]:
+            event_rows += (f"<tr><td>{esc(str(ev.get('ts', '')))}</td>"
+                           f"<td>{esc(_event_summary(ev))}</td></tr>")
+    else:
+        event_note = "无事件流（2026-08-16 前旧 run）"
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Run 详情 {manifest.get('run_id')}</title>
+<style>
+body {{ font-family: system-ui; margin: 2em; }}
+table {{ border-collapse: collapse; width: 100%; margin-bottom: 1em; }}
+td, th {{ border: 1px solid #ccc; padding: 5px 10px; font-size: 13px; text-align: left; }}
+th {{ background: #f5f5f5; }}
+pre {{ background: #fafafa; padding: 8px; border: 1px solid #eee; overflow-x: auto; }}
+</style></head><body>
+<h2>Run 详情：{esc(str(manifest.get('run_id')))}
+  <small>{esc(str(manifest.get('task')))}{' · ' + esc(str(manifest.get('bench_cell'))) if manifest.get('bench_cell') else ''}</small></h2>
+<h3>概览</h3><table>{summary}</table>
+<h3>配置快照</h3><pre>{cfg_text}</pre>
+<h3>产物</h3>
+<table><tr><th>Stage</th><th>文件</th><th>适配器</th><th>模型</th><th>耗时</th><th>成本</th><th>Seed</th></tr>
+{art_rows}</table>
+<h3>评测明细</h3>{eval_blocks or '<p>（无评测记录）</p>'}
+<h3>事件流</h3><p>{esc(event_note)}</p>
+<table><tr><th>ts</th><th>事件</th></tr>{event_rows}</table>
+</body></html>"""
+    out.write_text(html, encoding="utf-8")
+    return out
