@@ -331,7 +331,6 @@ class MiniMaxH3Local:
         elif isinstance(video, Image.Image):
             frames = [_norm(video)]
         elif hasattr(video, "detach"):       # torch.Tensor，H3 输出 (B, T, C, H, W)
-            import torch
             if video.dim() == 5:
                 video = video[0]             # -> (T, C, H, W)
             if video.dim() == 4:             # (T, C, H, W) -> (T, H, W, C)
@@ -351,7 +350,6 @@ class MiniMaxH3Local:
 
     @staticmethod
     def _save_video_with_audio(video, audio, sr: int, path: Path):
-        import imageio, torch
         tmp_v = path.with_suffix(".noaudio.mp4")
         MiniMaxH3Local._save_video(video, tmp_v)
         import soundfile as sf

@@ -22,7 +22,7 @@ import itertools
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import validate_task, ConfigError
-from .registry import capabilities, check_capabilities, instantiate, resolve, resolve_provider
+from .registry import check_capabilities, instantiate, resolve_provider
 
 # E4 实测：A800 双卡 30 步 8s@768p 单段 ~12-18 分钟；12 为规划下限常数
 _DEFAULT_LOCAL_MIN_PER_SEG = 12.0

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vidharness"
+version = "0.2.0"
+description = "面向未来的视频生成流水线实验与评测 Harness（对齐 deepseek-harness 范式）"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml",
+    "openai",
+    "requests",
+]
+
+[project.optional-dependencies]
+local = ["torch", "diffusers", "transformers", "imageio", "soundfile", "pillow"]
+judge = ["funasr", "modelscope"]
+dev = ["pytest", "pytest-cov", "ruff"]
+
+[project.scripts]
+vh = "vidharness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vidharness*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]

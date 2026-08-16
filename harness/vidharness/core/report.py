@@ -243,8 +243,8 @@ def render_run_html(run_dir: Path, out: Path) -> Path:
     event_note = ""
     timeline_rows = ""
     if events_file.exists():
-        events = [json.loads(l) for l in events_file.read_text(encoding="utf-8").splitlines()
-                  if l.strip()]
+        events = [json.loads(line) for line in events_file.read_text(encoding="utf-8").splitlines()
+                  if line.strip()]
         event_note = f"共 {len(events)} 条事件（显示末尾 20 条）"
         for ev in events[-20:]:
             event_rows += (f"<tr><td>{esc(str(ev.get('ts', '')))}</td>"

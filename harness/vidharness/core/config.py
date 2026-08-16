@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 CHAIN_MODES = ("none", "hard", "ref")
 
@@ -102,6 +102,8 @@ def validate_task(cfg: Dict[str, Any]) -> Dict[str, Any]:
         _expect_type(cfg["task_name"], "task.task_name", str)
     if "segments" in cfg:
         _expect_type(cfg["segments"], "task.segments", int)
+    if "brief" in cfg:
+        _expect_type(cfg["brief"], "task.brief", str)
 
     _expect_type(cfg.get("pipeline", {}), "pipeline", dict)
     _expect_keys(cfg["pipeline"], "pipeline", PIPELINE_KEYS)

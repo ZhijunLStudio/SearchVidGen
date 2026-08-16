@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Dict, List, Type, Union
+from typing import Any, Dict, List, Union
 
 _REGISTRY: Dict[str, Any] = {}
 

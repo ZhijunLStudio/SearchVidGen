@@ -86,6 +86,11 @@ python -m vidharness.cli regress --output experiments
 
 # 测试
 python -m pytest tests/ -q
+python -m pytest tests/ -q --cov=vidharness.core --cov-report=term   # core ≥90%
+python -m ruff check vidharness/
+
+# 安装（可分发：pip install -e . → vh 命令入口；多机/子进程执行的基础）
+pip install -e .
 ```
 
 每个 run 目录包含：events.jsonl（权威事件流）+ manifest.json（投影，可重放重建）+

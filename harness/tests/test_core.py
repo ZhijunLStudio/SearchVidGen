@@ -1820,3 +1820,218 @@ class TestCalibratedLeaderboard:
         r2 = by_id["r2"]
         assert r2["calibrated"] is False
         assert r2["scores_calibrated"]["与指令一致性"] == 9.0  # vLLM run 不动
+
+
+class TestCoverageGaps:
+    """核心模块分支覆盖补全（DSH 覆盖纪律的缩放版）。"""
+
+    # ---- config 校验分支 ----
+    def test_config_brief_and_segments_types(self):
+        cfg = TestConfigValidation()._base()
+        cfg["brief"] = 123
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["segments"] = "4"
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+
+    def test_config_retry_and_audio_memory_cost(self):
+        from vidharness.core.config import validate_task, ConfigError
+        cfg = TestConfigValidation()._base()
+        cfg["script_retry"]["inject_feedback"] = "yes"
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["audio_verify"]["extra"] = 1
+        with pytest.raises(ConfigError, match="未知配置键"):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["memory"]["extra"] = 1
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["cost"] = {"gpu_price_usd_per_hour": "1.2"}
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["pipeline"]["generator"] = {"adapter": "a", "route": {}}
+        with pytest.raises(ConfigError, match="二选一"):
+            validate_task(cfg)
+        cfg = TestConfigValidation()._base()
+        cfg["script_optimize"] = {"rounds": 2, "extra": 1}
+        with pytest.raises(ConfigError):
+            validate_task(cfg)
+
+    # ---- regress 分支 ----
+    def test_regress_list_empty_and_latest(self, tmp_path):
+        from vidharness.core.regress import load_regression_list, _latest_finished_run
+        spec = tmp_path / "reg.yaml"
+        spec.write_text("tasks: []\n", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="缺少 tasks"):
+            load_regression_list(spec)
+        # 两个完成 run 取最新
+        for rid, ts in (("r1", "2026-08-16T10:00:00"), ("r2", "2026-08-16T11:00:00")):
+            d = tmp_path / "tX" / rid
+            d.mkdir(parents=True)
+            (d / "manifest.json").write_text(json.dumps(
+                {"run_id": rid, "finished_at": ts}, ensure_ascii=False))
+        assert _latest_finished_run(tmp_path, "tX")["run_id"] == "r2"
+        assert _latest_finished_run(tmp_path, "tNope") is None
+
+    def test_regress_drift_variants(self, tmp_path):
+        from vidharness.core.regress import config_drifted
+        import yaml
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        task = tmp_path / "task.yaml"
+        task.write_text("task_name: t\n", encoding="utf-8")
+        assert config_drifted(run_dir, task) == "无快照（8-16 前旧 run）"
+        (run_dir / "config.yaml").write_text(
+            yaml.safe_dump({"task_name": "t"}, allow_unicode=True))
+        task.write_text("task_name: t2\n", encoding="utf-8")
+        assert config_drifted(run_dir, task) == "配置漂移（快照 ≠ 当前任务文件，需重跑）"
+        assert config_drifted(run_dir, tmp_path / "missing.yaml") == "任务文件缺失"
+
+    # ---- bench 分支 ----
+    def test_bench_expand_axis_errors(self):
+        from vidharness.core.bench import expand_matrix, BenchError
+        with pytest.raises(BenchError, match="单键"):
+            expand_matrix({}, [{"a": [1], "b": [2]}])
+        with pytest.raises(BenchError, match="非空列表"):
+            expand_matrix({}, [{"a": "not-list"}])
+
+    def test_bench_estimate_unknown_backend_and_missing_rate(self):
+        from vidharness.core.bench import estimate_cost, BenchError
+        est = estimate_cost({"segments": 2, "pipeline": {"generator": {"params": {}}}},
+                            {"backend": "weird"}, 10)
+        assert est["cost_usd_est"] is None
+        with pytest.raises(BenchError, match="未声明"):
+            estimate_cost({"segments": 2, "pipeline": {"generator": {"params": {}}}},
+                          {"backend": "api", "cost_rates_usd_per_s": {}}, 10)
+
+    def test_bench_cell_status_corrupt_manifest(self, tmp_path):
+        from vidharness.core.bench import bench_cell_status
+        d = tmp_path / "t" / "r1"
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_text("not json", encoding="utf-8")
+        assert bench_cell_status(tmp_path, "t", "A", {}, query="q")["run_id"] is None
+
+    # ---- leaderboard 分支 ----
+    def test_leaderboard_corrupt_baseline_and_missing_runs(self, tmp_path):
+        from vidharness.core.leaderboard import _load_baseline, render_index
+        p = tmp_path / "bad.json"
+        p.write_text("not json", encoding="utf-8")
+        assert _load_baseline(p) == {}
+        (tmp_path / "empty.json").write_text('{"runs": []}', encoding="utf-8")
+        idx = render_index(tmp_path).read_text(encoding="utf-8")
+        assert "无基线数据" in idx
+
+    def test_leaderboard_md_passed_none(self):
+        from vidharness.core.leaderboard import _render_md
+        md = _render_md({"task": "t", "updated_at": "x", "run_count": 1, "runs": [{
+            "run_id": "r", "bench_cell": None, "chain_mode": None, "models": [],
+            "judge_adapters": [], "scores": {}, "passed_rate": None,
+            "total_cost_usd": 0.0, "local_gpu_hours": None, "created_at": ""}]})
+        assert "| r |" in md
+
+    # ---- invariants 分支 ----
+    def test_invariants_manifest_unparseable_and_missing_config(self, tmp_path):
+        from vidharness.core.invariants import check_experiment
+        (tmp_path / "manifest.json").write_text("bad", encoding="utf-8")
+        assert "无法解析" in check_experiment(tmp_path)[0]
+        (tmp_path / "manifest.json").write_text(json.dumps(
+            {"config_file": "config.yaml", "stages": {}, "total_cost_usd": 0.0,
+             "total_elapsed_s": 0.0}))
+        assert any("配置快照缺失" in v for v in check_experiment(tmp_path))
+
+    def test_invariants_retries_non_int(self, tmp_path):
+        from vidharness.core.invariants import check_experiment
+        (tmp_path / "manifest.json").write_text(json.dumps(
+            {"stages": {}, "total_cost_usd": 0.0, "total_elapsed_s": 0.0,
+             "retries": {"segments": "两次"}}))
+        assert any("retries" in v for v in check_experiment(tmp_path))
+
+    # ---- memory 分支 ----
+    def test_memory_unknown_version_and_missing_key(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        p = tmp_path / "_memory.jsonl"
+        p.write_text(json.dumps({"v": 99, "key": "k", "complaint": "c"}) + "\n"
+                     + json.dumps({"v": 1}) + "\n", encoding="utf-8")
+        mem = ExperienceMemory(p)
+        assert len(mem.load_warnings) == 2
+        assert mem.experience_lines() == []
+
+    def test_memory_recent_feedback_order(self, tmp_path):
+        from vidharness.core.memory import ExperienceMemory
+        mem = ExperienceMemory(tmp_path / "_memory.jsonl", promote_threshold=99)
+        mem.add("问题A", source="r1")
+        mem.add("问题B", source="r2")
+        assert mem.recent_feedback(1) == ["问题B"]   # 最近优先
+
+    # ---- registry 分支 ----
+    def test_instantiate_var_kw_class(self):
+        @register("script.var-kw")
+        class VarKw:
+            capabilities = {"language": "zh", "json_output": True}
+            def __init__(self, **kw):
+                self.kw = kw
+        o = instantiate("script.var-kw", {"anything": 1})
+        assert o.kw == {"anything": 1}
+
+    def test_resolve_provider_no_candidates(self):
+        SEAM_CAPABILITY_SCHEMAS["nosuchseam2"] = {"audio": bool}
+        with pytest.raises(RuntimeError, match="没有注册"):
+            resolve_provider("nosuchseam2", {"audio": True})
+
+    # ---- experiment 分支 ----
+    def test_find_existing_corrupt_payload(self, tmp_path):
+        exp = Experiment(task="t", base_dir=tmp_path, run_id="r1")
+        d = exp.artifacts_dir / "script"
+        d.mkdir(parents=True)
+        p = d / "script.json"
+        p.write_text("not json", encoding="utf-8")
+        (Path(str(p) + ".meta.json")).write_text("{}", encoding="utf-8")
+        art = exp.find_existing("script", "script")
+        assert art is not None and art.payload == {}
+
+    def test_finalize_price_param_and_set_meta(self, tmp_path):
+        exp = _build_exp(tmp_path)
+        exp.set_meta("chain_mode", "none")
+        exp.finalize(gpu_price_usd_per_hour=3.0)
+        m = json.loads((exp.root / "manifest.json").read_text(encoding="utf-8"))
+        assert m["chain_mode"] == "none"
+        assert m["local_gpu_cost_usd_est"] == 0.0   # 本测试无 local 产物
+
+
+class TestReportDetailBranches:
+    def test_render_run_html_full_event_coverage(self, tmp_path):
+        """详情页全部事件摘要/时间线分支（_event_summary 各类型）。"""
+        from vidharness.core.report import render_run_html, report
+        exp = _build_exp(tmp_path)
+        # 各类事件：retry/eval/manifest.set/finalized 已有部分，补齐全集
+        exp.record_retry("segments")
+        exp.save_eval("cross_consistency", [{"scores": {"跨段一致性": 9.0}, "passed": True}])
+        exp.set_meta("generator_capabilities", {"audio": True})
+        (Path(tmp_path) / "v2.mp4").write_bytes(b"fake")
+        exp.save_artifact("segments", Artifact(
+            kind="video", path=Path(tmp_path) / "v2.mp4",
+            meta=ArtifactMeta(adapter="generator.x", elapsed_s=2.0)), name="seg02")
+        exp.stage_started("script")
+        exp.stage_finished("script")   # 详情页时间线需要配对事件
+        exp.finalize()
+        html = render_run_html(exp.root, exp.root / "report.html").read_text(encoding="utf-8")
+        for frag in ("query.bound", "config.snapshotted", "artifact.saved", "eval.saved",
+                     "retry", "manifest.set", "finalized", "阶段时间线", "stage.finished"):
+            assert frag in html, frag
+        # report() 聚合入口
+        result = report(tmp_path, "t", tmp_path / "r.html")
+        assert result["runs"] == 1
+
+    def test_render_run_html_no_events(self, tmp_path):
+        """旧 run（无事件流）详情页分支。"""
+        from vidharness.core.report import render_run_html
+        exp = _build_exp(tmp_path)
+        (exp.root / "events.jsonl").unlink()
+        html = render_run_html(exp.root, exp.root / "report.html").read_text(encoding="utf-8")
+        assert "无事件流" in html and "（无记录）" in html

@@ -19,7 +19,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 MEMORY_FORMAT_VERSION = 1
 _MAX_SOURCES = 5          # 每条经验的来源回溯上限（防无限增长）

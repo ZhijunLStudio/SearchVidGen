@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from ..core.experiment import Experiment, Timer
 from .judge_loop import run_with_judge, run_judge
 from ..seams import GenRequest, JudgeCriteria, MediaGenerator, RetryPolicy
-from ..core.registry import check_capabilities, instantiate, resolve
+from ..core.registry import check_capabilities, instantiate
 
 
 class SegmentDirector:
@@ -107,7 +107,6 @@ class SegmentDirector:
                 self.exp.artifacts_dir / "script")
             best = max(history, key=lambda r: r.get("score", 0))
             # 保存最终选定剧本为正式产物
-            import shutil
             art_path = self.exp.artifacts_dir / "script" / "script.json"
             art_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                                 encoding="utf-8")

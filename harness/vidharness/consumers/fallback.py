@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..core.registry import instantiate, resolve
+from ..core.registry import instantiate
 from ..seams import GenRequest
 
 
