@@ -1,9 +1,15 @@
 """命令行入口：
-  vh run <task.yaml> --query "春天在哪里"
-  vh bench <spec.yaml> --query "..." [--dry-run]   # 基准矩阵对比
-  vh adapters [--verbose]                          # 列出适配器/参数声明
+  vh run <task.yaml> --query "..." [--label L] [--resume ID]
+  vh bench <spec.yaml> --query "..." [--dry-run]   # 基准矩阵（repeats/格级续跑）
+  vh adapters [--verbose]                          # 适配器/参数声明目录
   vh doctor <run_dir> | --all <dir>                # 运行时不变量体检
-  vh leaderboard <task> [--publish dir]            # leaderboard 基线导出
+  vh leaderboard <task> | --all [--calibrated]     # leaderboard 基线导出
+  vh regress [--run]                               # 变体回归套件（状态/执行）
+  vh scaffold <seam> <name>                        # 提供者骨架（新模型 = 新文件）
+  vh feedback "<意见>"                              # 用户反馈 → 经验记忆
+  vh memory-consolidate                            # 语义聚类合并经验记忆
+  vh costs [--gpu-price N]                         # 跨任务成本报表
+  vh report <task> [--run ID]                      # 对比报告/单 run 详情页
 """
 from __future__ import annotations
 
