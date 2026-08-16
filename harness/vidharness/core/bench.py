@@ -166,3 +166,47 @@ def plan(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
         est = estimate_cost(cfg, caps, local_min)
         plan_rows.append({"label": label, "cfg": cfg, "caps": caps, "estimate": est})
     return plan_rows
+
+
+def bench_cell_status(base_dir: Any, task_name: str, label: str,
+                      cfg: Dict[str, Any], query: str = "") -> Dict[str, Any]:
+    """bench 格的断点续跑状态：在已有 run 中找与当前格匹配的对象。
+
+    格身份 = bench_cell 标签 + config.yaml 快照 + query（三者同才算同一格：
+    换 query 是不同实验，不得跳过/续跑旧格）。
+    返回 {"run_id": 最新匹配 run 或 None, "finished": bool}。
+    """
+    import yaml
+    from pathlib import Path
+    task_dir = Path(base_dir) / task_name
+    if not task_dir.exists():
+        return {"run_id": None, "finished": False}
+    best: Optional[Dict[str, Any]] = None
+    for run_dir in sorted(task_dir.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        mf = run_dir / "manifest.json"
+        if not mf.exists():
+            continue
+        try:
+            import json as _json
+            manifest = _json.loads(mf.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if manifest.get("bench_cell") != label:
+            continue
+        if query and manifest.get("query") != query:
+            continue
+        cfg_file = run_dir / "config.yaml"
+        if not cfg_file.exists():
+            continue
+        try:
+            if yaml.safe_load(cfg_file.read_text(encoding="utf-8")) != cfg:
+                continue
+        except Exception:
+            continue
+        best = {"run_id": manifest.get("run_id", run_dir.name),
+                "finished": bool(manifest.get("finished_at"))}
+    if best is None:
+        return {"run_id": None, "finished": False}
+    return best

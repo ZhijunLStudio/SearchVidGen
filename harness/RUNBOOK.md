@@ -55,6 +55,8 @@ python scripts/collect_evidence.py experiments/story_short/<run_id>
 # 基准矩阵（一次只变一个变量；规划期全格校验，错误不花 GPU）
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..." --dry-run
 python -m vidharness.cli bench tasks/bench_ablation.yaml --query "..."
+# 格级断点续跑：已完成格自动跳过、未完成格续跑（格身份 = 标签+配置+query）；
+# 中途崩溃后原命令重跑即可接着跑
 
 # 体检 / 目录
 python -m vidharness.cli doctor experiments/story_short/<run_id>   # 单 run 不变量

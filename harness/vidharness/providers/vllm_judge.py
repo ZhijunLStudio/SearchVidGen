@@ -110,9 +110,11 @@ class OpenAICompatJudge:
         out = resp.choices[0].message.content or ""
 
         from ..seams import spec_to_criteria
-        from ..consumers.judge_loop import parse_scores
+        from ..consumers.judge_loop import parse_scores, unparseable_feedback
         crits = spec_to_criteria(criteria)
         scores, feedback = parse_scores(out, crits)
+        if not scores:
+            feedback = unparseable_feedback(out)   # 可操作反馈（E21）
 
         # 可重建：raw 输出 + 输入规格 + 媒体清单全部落盘（对齐"模型可见⟺日志"）
         path = workdir / f"judge_{int(time.time())}.json"

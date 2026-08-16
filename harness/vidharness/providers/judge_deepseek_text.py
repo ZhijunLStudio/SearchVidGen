@@ -19,7 +19,7 @@ from openai import OpenAI
 
 from ..seams import Artifact, ArtifactMeta, spec_to_criteria
 from ..core.registry import register
-from ..consumers.judge_loop import parse_scores
+from ..consumers.judge_loop import parse_scores, unparseable_feedback
 from .deepseek_script import _estimate_cost, _load_token
 
 
@@ -76,6 +76,8 @@ class DeepSeekTextJudge:
         )
         out = resp.choices[0].message.content or ""
         scores, feedback = parse_scores(out, crits)
+        if not scores:
+            feedback = unparseable_feedback(out)   # 可操作反馈（E21）
 
         # 可重建：raw 输出 + 输入规格全部落盘（对齐"模型可见 ⟺ 日志"）
         path = workdir / f"judge_ds_{int(time.time())}.json"

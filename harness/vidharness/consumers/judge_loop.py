@@ -66,6 +66,17 @@ def parse_scores(text: str, criteria: List[JudgeCriteria]) -> Tuple[Dict[str, fl
     return scores, feedback
 
 
+def unparseable_feedback(raw: str) -> str:
+    """评分解析失败时的可操作反馈（注入重试，而非空信号）。
+
+    E21 暴露：裁判输出不可解析时 feedback 为空，重试循环无可注入信号，
+    第二次尝试同样失败。此反馈给模型明确的重试指令 + 原文上下文。
+    """
+    return ("评分解析失败（未得到 JSON）。请严格只输出 "
+            '{"<维度名>": <0-10分数>, "feedback": "<一句话>"}，不要任何其他文字。'
+            f"原文前 200 字：{raw[:200]}")
+
+
 def finalize_verdict(scores: Dict[str, float], feedback: str,
                      criteria: List[JudgeCriteria]) -> Dict[str, Any]:
     """加权结算与阈值判定 —— 评测策略的唯一归属点。

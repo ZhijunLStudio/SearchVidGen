@@ -1464,3 +1464,92 @@ class TestFl2VAGuards:
         script = {"segments": [{"video_prompt": "p", "narration": "n", "duration": 5}]}
         d.stage_segments(script)
         assert captured["req"].first_frame == anchor
+
+
+class TestUnparseableFeedback:
+    def test_feedback_has_instruction_and_context(self):
+        from vidharness.consumers.judge_loop import unparseable_feedback
+        fb = unparseable_feedback("完全不是 JSON 的回复")
+        assert "评分解析失败" in fb and "严格只输出" in fb
+        assert "完全不是 JSON 的回复" in fb[:300]
+
+    def test_deepseek_judge_garbage_output_yields_actionable_feedback(self, tmp_path, monkeypatch):
+        """E21 回归：裁判输出不可解析时，feedback 必须可操作（而非空信号）。"""
+        from types import SimpleNamespace
+        captured = {}
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(content="好的，我来评分：整体不错")
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="deepseek-chat",
+                                       usage=SimpleNamespace(prompt_tokens=10,
+                                                            completion_tokens=10))
+        monkeypatch.setattr("vidharness.providers.judge_deepseek_text.OpenAI", FakeClient)
+        judge = instantiate("judge.deepseek-text", {"api_key": "k"})
+        crit = criteria_to_spec([JudgeCriteria(name="叙事完整", question="q", min_score=6)])
+        art = judge.judge(media=[], criteria=crit, workdir=tmp_path)
+        assert art.payload["scores"] == {}
+        assert "评分解析失败" in art.payload["feedback"]
+
+
+class TestBenchCellStatus:
+    def _write_cell(self, base, task, run_id, label, cfg, finished):
+        import yaml
+        run_dir = base / task / run_id
+        run_dir.mkdir(parents=True)
+        m = {"run_id": run_id, "bench_cell": label, "query": "q"}
+        if finished:
+            m["finished_at"] = "2026-08-16T00:00:00"
+        (run_dir / "manifest.json").write_text(
+            json.dumps(m, ensure_ascii=False), encoding="utf-8")
+        (run_dir / "config.yaml").write_text(
+            yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    def test_status_finished_unfinished_nomatch(self, tmp_path):
+        from vidharness.core.bench import bench_cell_status
+        cfg = {"task_name": "t", "pipeline": {"context": {"chain_mode": "none"}}}
+        self._write_cell(tmp_path, "t", "r1", "A", cfg, finished=True)
+        self._write_cell(tmp_path, "t", "r2", "A", cfg, finished=False)
+        self._write_cell(tmp_path, "t", "r3", "B", dict(cfg), finished=False)
+        # r2 是最新未完成匹配 → 续跑
+        assert bench_cell_status(tmp_path, "t", "A", cfg, query="q") ==             {"run_id": "r2", "finished": False}
+        # 配置不同的同标签 run 不算同一格
+        cfg2 = {"task_name": "t", "pipeline": {"context": {"chain_mode": "hard"}}}
+        self._write_cell(tmp_path, "t", "r4", "A", cfg2, finished=False)
+        assert bench_cell_status(tmp_path, "t", "A", cfg, query="q")["run_id"] == "r2"
+        # 无匹配
+        assert bench_cell_status(tmp_path, "t", "C", cfg, query="q") ==             {"run_id": None, "finished": False}
+        # 只有已完成匹配
+        assert bench_cell_status(tmp_path, "t", "A", cfg)["finished"] is False
+        import shutil
+        for r in ("r1", "r2", "r3", "r4"):
+            shutil.rmtree(tmp_path / "t" / r)
+        # 只有已完成匹配 → 跳过
+        self._write_cell(tmp_path, "t", "r5", "A", cfg, finished=True)
+        assert bench_cell_status(tmp_path, "t", "A", cfg, query="q") ==             {"run_id": "r5", "finished": True}
+
+    def test_query_part_of_cell_identity(self, tmp_path):
+        """换 query 重跑 bench 不得跳过旧格（query 是实验变量）。"""
+        from vidharness.core.bench import bench_cell_status
+        cfg = {"task_name": "t", "pipeline": {"context": {"chain_mode": "none"}}}
+        import yaml
+        run_dir = tmp_path / "t" / "r1"
+        run_dir.mkdir(parents=True)
+        (run_dir / "manifest.json").write_text(json.dumps(
+            {"run_id": "r1", "bench_cell": "A", "query": "旧故事",
+             "finished_at": "2026-08-16T00:00:00"}, ensure_ascii=False))
+        (run_dir / "config.yaml").write_text(
+            yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
+        # 同 query → 跳过
+        assert bench_cell_status(tmp_path, "t", "A", cfg, query="旧故事")["finished"] is True
+        # 不同 query → 不匹配（新实验）
+        assert bench_cell_status(tmp_path, "t", "A", cfg, query="新故事")["run_id"] is None

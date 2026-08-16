@@ -168,11 +168,21 @@ def cmd_bench(args):
         print("dry-run：未执行生成")
         return
     # 逐格执行；相同参数的适配器跨格复用（避免每格重载生成模型，E19 已知成本）
+    # 格级断点续跑：已完成格跳过、未完成格续跑（长矩阵崩溃不重来）
+    from .core.bench import bench_cell_status
     adapters_cache: dict = {}
     for r in rows:
-        print(f"\n▶ bench 格 [{r['label']}]")
-        final, root = run_task(r["cfg"], args.query, args.output, label=r["label"],
-                               adapters_cache=adapters_cache)
+        task_name = r["cfg"].get("task_name", "story")
+        status = bench_cell_status(Path(args.output), task_name, r["label"],
+                                   r["cfg"], query=args.query)
+        if status["run_id"] and status["finished"]:
+            print(f"\n⏭ bench 格 [{r['label']}] 已完成（{status['run_id']}），跳过")
+            continue
+        resume = status["run_id"]
+        note = f"（续跑 {resume}）" if resume else ""
+        print(f"\n▶ bench 格 [{r['label']}]{note}")
+        final, root = run_task(r["cfg"], args.query, args.output, resume=resume,
+                               label=r["label"], adapters_cache=adapters_cache)
         print(f"  完成: {final}")
 
 
