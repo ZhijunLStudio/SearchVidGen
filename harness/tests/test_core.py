@@ -2077,3 +2077,34 @@ class TestScaffold:
         with pytest.raises(RuntimeError, match="已存在"):
             scaffold_provider("transcribe", "dup", tmp_path)
             scaffold_provider("transcribe", "dup", tmp_path)
+
+
+class TestFeedbackCleaning:
+    def test_clean_feedback_text(self):
+        from vidharness.core.memory import clean_feedback_text
+        assert clean_feedback_text('{"叙事完整": 5, "feedback": "故事缺乏转折"}') == "故事缺乏转折"
+        assert clean_feedback_text("评分解析失败（未得到 JSON）。请严格只输出 …") == ""
+        assert clean_feedback_text("旁白太肉麻") == "旁白太肉麻"
+        assert clean_feedback_text("") == ""
+        assert clean_feedback_text("{not json") == "{not json"   # 非 JSON 原样保留
+
+    def test_memory_load_migrates_json_noise_and_merges(self, tmp_path):
+        """E32 迁移：JSON 包装取内层 + 同键合并 + 迁移后补提升。"""
+        from vidharness.core.memory import ExperienceMemory
+        p = tmp_path / "_memory.jsonl"
+        p.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in [
+            {"v": 1, "key": "k1", "complaint": '{"叙事完整": 5, "feedback": "叙事缺乏转折"}',
+             "kind": "feedback", "count": 1, "sources": ["a"], "first_at": 1, "last_at": 1,
+             "promoted": False},
+            {"v": 1, "key": "k2", "complaint": "叙事缺乏转折",
+             "kind": "feedback", "count": 1, "sources": ["b"], "first_at": 2, "last_at": 2,
+             "promoted": False},
+            {"v": 1, "key": "k3", "complaint": "评分解析失败（未得到 JSON）",
+             "kind": "feedback", "count": 3, "sources": ["c"], "first_at": 3, "last_at": 3,
+             "promoted": False},
+        ]) + "\n", encoding="utf-8")
+        mem = ExperienceMemory(p, promote_threshold=2)
+        assert len(mem._items) == 1                      # 前两条合并、噪声丢弃
+        it = mem._items[0]
+        assert it["complaint"] == "叙事缺乏转折" and it["count"] == 2 and it["promoted"] is True
+        assert len(mem.load_warnings) == 1               # 噪声行记入警告

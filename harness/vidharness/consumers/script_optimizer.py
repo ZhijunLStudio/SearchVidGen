@@ -70,8 +70,11 @@ class ScriptOptimizer:
                 score = verdict.get("score", 0.0)
                 fb = verdict.get("feedback", "")
                 if fb and fb.strip() and "pass" not in fb[:4].lower():
-                    kind = "feedback" if not verdict.get("passed") else "suggestion"
-                    self.memory.add(fb, source=f"{self.exp.run_id}/opt-r{rnd}", kind=kind)
+                    from .judge_loop import extract_feedback_text
+                    clean = extract_feedback_text(fb)         # E32：JSON/解析噪声清洗
+                    if clean:
+                        kind = "feedback" if not verdict.get("passed") else "suggestion"
+                        self.memory.add(clean, source=f"{self.exp.run_id}/opt-r{rnd}", kind=kind)
                 rec = {"round": rnd, "candidate": k + 1, "artifact": str(art.path),
                        "score": score, "passed": verdict.get("passed"),
                        "feedback": fb[:300]}

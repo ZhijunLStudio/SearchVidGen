@@ -76,6 +76,12 @@ def unparseable_feedback(raw: str) -> str:
             '{"<维度名>": <0-10分数>, "feedback": "<一句话>"}，不要任何其他文字。'
             f"原文前 200 字：{raw[:200]}")
 
+def extract_feedback_text(feedback: str) -> str:
+    """清洗反馈文本（单一正源在 core/memory.clean_feedback_text，E32）。"""
+    from ..core.memory import clean_feedback_text
+    return clean_feedback_text(feedback)
+
+
 
 def finalize_verdict(scores: Dict[str, float], feedback: str,
                      criteria: List[JudgeCriteria]) -> Dict[str, Any]:

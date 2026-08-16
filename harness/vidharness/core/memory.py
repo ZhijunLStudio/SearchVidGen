@@ -30,6 +30,29 @@ def _normalize(text: str) -> str:
     return t[:60]
 
 
+def clean_feedback_text(feedback: str) -> str:
+    """清洗反馈文本（E32：真实记忆审计发现两类噪声）。
+
+    1. 整体或片段是 JSON（含 feedback 字段）→ 取内层 feedback（历史上
+       unparseable_feedback 的原文片段会把整段/多段 JSON 混入记忆——
+       多对象拼接形态用正则取首个 feedback）；
+    2. 解析失败指令（"评分解析失败…"）是基础设施噪声，不入质量记忆
+       → 返回空串由调用方跳过。
+    """
+    text = (feedback or "").strip()
+    if not text:
+        return ""
+    if text.startswith("评分解析失败"):
+        return ""
+    # 多 JSON 对象拼接/整体 JSON：取首个 feedback 字段值
+    m = re.search(r'\{"[^"]*":\s*\d+(?:\.\d+)?,\s*"feedback":\s*"((?:[^"\\]|\\.)*)"', text)
+    if m:
+        inner = m.group(1).replace("\\n", "\n").strip()
+        if inner:
+            return inner
+    return text
+
+
 class ExperienceMemory:
     def __init__(self, path: Path, promote_threshold: int = 1):
         self.path = Path(path)
@@ -41,6 +64,7 @@ class ExperienceMemory:
     def _load(self):
         if not self.path.exists():
             return
+        raw_items: List[Dict[str, Any]] = []
         for i, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
@@ -57,11 +81,35 @@ class ExperienceMemory:
                 self.load_warnings.append(
                     f"第 {i} 行记录版本 v={v} 未知（当前 {MEMORY_FORMAT_VERSION}），已跳过")
                 continue
-            # 无 v 字段 = v0 旧格式：兼容读取，flush 时升级
-            item.setdefault("v", MEMORY_FORMAT_VERSION)
+            # E32 迁移：JSON 包装取内层 feedback、解析噪声丢弃、键重算
+            cleaned = clean_feedback_text(str(item.get("complaint", "")))
+            if not cleaned:
+                self.load_warnings.append(f"第 {i} 行 complaint 为解析噪声，已跳过")
+                continue
+            item["v"] = MEMORY_FORMAT_VERSION
+            item["complaint"] = cleaned
+            item["key"] = _normalize(cleaned)
             item.setdefault("promoted", False)
             item.setdefault("sources", [])
-            self._items.append(item)
+            raw_items.append(item)
+        # 同键合并（历史语义近重复 → count 累加 → 补全提升，E14 语义）
+        merged: Dict[str, Dict[str, Any]] = {}
+        for item in raw_items:
+            key = item["key"]
+            if key in merged:
+                m = merged[key]
+                m["count"] = int(m.get("count", 0)) + int(item.get("count", 1))
+                m["sources"] = (m.get("sources") or [])[-_MAX_SOURCES + 1:] + \
+                    (item.get("sources") or [])[-_MAX_SOURCES:]
+                m["promoted"] = bool(m.get("promoted") or item.get("promoted"))
+                m["last_at"] = max(float(m.get("last_at", 0)), float(item.get("last_at", 0)))
+            else:
+                merged[key] = dict(item)
+        self._items = list(merged.values())
+        for item in self._items:
+            if item.get("kind") != "experience" and \
+                    int(item.get("count", 0)) >= self.promote_threshold:
+                item["promoted"] = True
 
     def _flush(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

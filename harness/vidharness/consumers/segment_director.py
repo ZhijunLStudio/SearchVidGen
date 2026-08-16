@@ -149,8 +149,11 @@ class SegmentDirector:
                 # 裁判反馈一律进记忆（环境信号）：通过时的改进建议与失败原因都记录，
                 # 重复出现自动提升为跨任务经验
                 if feedback and feedback.strip() and "pass" not in feedback[:4].lower():
-                    kind = "feedback" if not verdict.get("passed") else "suggestion"
-                    self.memory.add(feedback, source=f"{self.exp.run_id}/script", kind=kind)
+                    from .judge_loop import extract_feedback_text
+                    clean = extract_feedback_text(feedback)   # E32：JSON/解析噪声清洗
+                    if clean:
+                        kind = "feedback" if not verdict.get("passed") else "suggestion"
+                        self.memory.add(clean, source=f"{self.exp.run_id}/script", kind=kind)
                 if verdict.get("passed"):
                     return art.payload
             except Exception as e:
