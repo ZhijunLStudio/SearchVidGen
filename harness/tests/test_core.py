@@ -2035,3 +2035,31 @@ class TestReportDetailBranches:
         (exp.root / "events.jsonl").unlink()
         html = render_run_html(exp.root, exp.root / "report.html").read_text(encoding="utf-8")
         assert "无事件流" in html and "（无记录）" in html
+
+
+class TestScaffold:
+    def test_scaffold_generator(self, tmp_path):
+        from vidharness.core.scaffold import scaffold_provider
+        p = scaffold_provider("generator", "my-model", tmp_path)
+        text = p.read_text(encoding="utf-8")
+        assert '@register("generator.my-model")' in text
+        assert "class MyModel" in text
+        assert "def generate(self, req: GenRequest" in text
+        assert "'max_duration_s': '...'" in text      # 能力骨架来自 schema（repr 单引号）
+        assert 'raise NotImplementedError' in text   # 未实现即响亮失败
+        assert "param_schema" in text
+
+    def test_scaffold_judge_contract(self, tmp_path):
+        from vidharness.core.scaffold import scaffold_provider
+        p = scaffold_provider("judge", "text-v2", tmp_path)
+        text = p.read_text(encoding="utf-8")
+        assert "modalities = [\"text\"]" in text
+        assert "勿在此计算总分" in text               # 结算归消费者的契约提示
+
+    def test_scaffold_errors(self, tmp_path):
+        from vidharness.core.scaffold import scaffold_provider
+        with pytest.raises(RuntimeError, match="未知 seam"):
+            scaffold_provider("nosuch", "x", tmp_path)
+        with pytest.raises(RuntimeError, match="已存在"):
+            scaffold_provider("transcribe", "dup", tmp_path)
+            scaffold_provider("transcribe", "dup", tmp_path)

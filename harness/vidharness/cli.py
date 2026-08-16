@@ -140,6 +140,16 @@ def cmd_regress(args):
         print(f"  完成: {final}")
 
 
+def cmd_scaffold(args):
+    from .core.scaffold import scaffold_provider
+    path = scaffold_provider(args.seam, args.name, Path(args.out))
+    print(f"✓ 提供者骨架: {path}")
+    print("  下一步（cookbook: docs/cookbook/adding-a-provider.md）:")
+    print("  1. 实现协议方法 + 填写 capabilities/param_schema")
+    print("  2. providers/__init__.py 加 import（加载即注册）")
+    print(f"  3. vh adapters 确认注册；任务 YAML 引用 {args.seam}.{args.name}")
+
+
 def cmd_feedback(args):
     from .core.memory import ExperienceMemory
     mem = ExperienceMemory(Path(args.output) / "_memory.jsonl")
@@ -280,6 +290,12 @@ def main(argv=None):
     prg.add_argument("--output", default="experiments", help="实验输出根目录")
     prg.add_argument("--run", action="store_true", help="执行套件（跳过已完成）")
     prg.set_defaults(fn=cmd_regress)
+
+    psc = sub.add_parser("scaffold", help="生成提供者骨架（新模型 = 新文件）")
+    psc.add_argument("seam", help="能力缝（generator/judge/script/transcribe）")
+    psc.add_argument("name", help="提供者名（注册为 <seam>.<name>）")
+    psc.add_argument("--out", default="vidharness/providers", help="输出目录")
+    psc.set_defaults(fn=cmd_scaffold)
 
     pf = sub.add_parser("feedback", help="把用户意见写入经验记忆（环境反馈直达）")
     pf.add_argument("text", help="反馈内容（如：旁白太肉麻，要真实朴素）")

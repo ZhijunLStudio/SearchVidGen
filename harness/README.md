@@ -76,6 +76,9 @@ harness/vidharness/
    裁判在第一次调用即响亮失败，抽帧失败记错误记录而不是假装评测。
    **阶段级裁判路由**（judge.stages）：文本评测阶段可覆盖为 DeepSeek 文本
    裁判，消除对 VLM 服务就绪的依赖。
+10. **新模型 = 新文件（带脚手架）**：`vh scaffold <seam> <name>` 生成提供者
+    骨架（能力骨架来自 seam schema）；接入清单见
+    [docs/cookbook/adding-a-provider.md](docs/cookbook/adding-a-provider.md)。
 
 ## 决策记忆（Agent Notes）
 
