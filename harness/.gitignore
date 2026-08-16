@@ -2,3 +2,5 @@ experiments/
 __pycache__/
 .pytest_cache/
 *.pyc
+vidharness.egg-info/
+*.egg-info/
