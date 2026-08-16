@@ -168,11 +168,13 @@ def cmd_leaderboard(args):
     from .core.leaderboard import export
     if args.all:
         from .core.leaderboard import export_all
-        result = export_all(Path(args.output), Path(args.publish))
+        result = export_all(Path(args.output), Path(args.publish),
+                            calibrate=args.calibrated)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     json_path, md_path, diff = export(
-        Path(args.output), args.task, out_dir=Path(args.publish))
+        Path(args.output), args.task, out_dir=Path(args.publish),
+        calibrate=args.calibrated)
     print(json.dumps({
         "json": str(json_path), "md": str(md_path),
         "diff": diff,
@@ -267,6 +269,8 @@ def main(argv=None):
     pl = sub.add_parser("leaderboard", help="导出 leaderboard 基线（JSON+MD，与上次基线 diff）")
     pl.add_argument("task", nargs="?", default=None, help="任务名（--all 时省略）")
     pl.add_argument("--all", action="store_true", help="导出全部任务 + 渲染 index.html")
+    pl.add_argument("--calibrated", action="store_true",
+                    help="按 calibration/ 维度偏移（n≥3）换算评分到主裁判口径（E30）")
     pl.add_argument("--output", default="experiments", help="实验输出根目录（读取）")
     pl.add_argument("--publish", default="leaderboards", help="基线输出目录（默认可入库追踪）")
     pl.set_defaults(fn=cmd_leaderboard)

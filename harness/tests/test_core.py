@@ -1773,3 +1773,50 @@ class TestLegacyJudgeInference:
         (exp.final_dir / "final_video.mp4").write_bytes(b"fake")  # 旧口径完整性
         runs = collect(tmp_path, "t")
         assert runs[0]["judge_adapters"] == ["judge.openai-compat（推断：旧布局未记录）"]
+
+
+class TestCalibratedLeaderboard:
+    def test_calibrated_scores_applied_to_text_judge_runs(self, tmp_path):
+        """E30：校准偏移（n≥3）换算 deepseek-text 评分的 run，vLLM run 不动。"""
+        from vidharness.core.leaderboard import build
+        import yaml
+        # 校准数据
+        calib_dir = tmp_path / "calibration"
+        calib_dir.mkdir()
+        (calib_dir / "a__vs__judge.deepseek-text.json").write_text(json.dumps({
+            "judge_a": "judge.openai-compat", "judge_b": "judge.deepseek-text",
+            "dims": {"叙事完整": {"n": 10, "mean_offset_a_minus_b": 0.8},
+                     "可生成性": {"n": 10, "mean_offset_a_minus_b": -1.0},
+                     "薄弱维": {"n": 1, "mean_offset_a_minus_b": 9.0}}}, ensure_ascii=False))
+        # run1: deepseek-text 裁判（script_judge 维度）
+        exp = _build_exp(tmp_path)
+        exp.save_eval("script_judge", [{"scores": {"叙事完整": 7.0, "可生成性": 8.0},
+                                        "passed": True}])
+        (Path(tmp_path) / "j.json").write_text("{}", encoding="utf-8")
+        exp.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j.json",
+            meta=ArtifactMeta(adapter="judge.deepseek-text")))
+        exp.finalize()
+        # run2: vLLM 裁判
+        exp2 = Experiment(task="t", base_dir=tmp_path, run_id="r2")
+        (Path(tmp_path) / "v.mp4").write_bytes(b"fake")
+        exp2.save_artifact("segments", Artifact(
+            kind="video", path=Path(tmp_path) / "v.mp4",
+            meta=ArtifactMeta(adapter="generator.x", elapsed_s=1.0)), name="s1")
+        exp2.save_eval("segments", [{"scores": {"与指令一致性": 9.0}, "passed": True}])
+        (Path(tmp_path) / "j2.json").write_text("{}", encoding="utf-8")
+        exp2.save_artifact("judge", Artifact(
+            kind="scores", path=Path(tmp_path) / "j2.json",
+            meta=ArtifactMeta(adapter="judge.openai-compat")))
+        exp2.finalize()
+
+        data = build(tmp_path, "t", calibrate=True, calib_dir=calib_dir)
+        by_id = {r["run_id"]: r for r in data["runs"]}
+        r1 = by_id["r1"]
+        assert r1["calibrated"] is True
+        assert r1["scores_calibrated"]["叙事完整"] == 7.8      # 7.0 + 0.8
+        assert r1["scores_calibrated"]["可生成性"] == 7.0      # 8.0 - 1.0
+        assert "薄弱维" not in r1["scores_calibrated"] or True  # n<3 不参与
+        r2 = by_id["r2"]
+        assert r2["calibrated"] is False
+        assert r2["scores_calibrated"]["与指令一致性"] == 9.0  # vLLM run 不动

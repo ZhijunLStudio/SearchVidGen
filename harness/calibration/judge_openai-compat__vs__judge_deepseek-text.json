@@ -1,26 +1,26 @@
 {
   "judge_a": "judge.openai-compat",
   "judge_b": "judge.deepseek-text",
-  "created_at": "2026-08-16T12:37:55.437842",
-  "n_scripts": 5,
+  "created_at": "2026-08-16T13:55:53.998563",
+  "n_scripts": 10,
   "scored": {
-    "judge.openai-compat": 5,
-    "judge.deepseek-text": 4
+    "judge.openai-compat": 10,
+    "judge.deepseek-text": 10
   },
   "attempts_used": {
-    "judge.openai-compat": 5,
-    "judge.deepseek-text": 6
+    "judge.openai-compat": 10,
+    "judge.deepseek-text": 10
   },
   "parse_failure_rate": {
     "judge.openai-compat": 0.0,
-    "judge.deepseek-text": 0.2
+    "judge.deepseek-text": 0.0
   },
   "dims": {
     "叙事完整": {
-      "n": 4,
-      "mean_a": 7.5,
-      "mean_b": 7.0,
-      "mean_offset_a_minus_b": 0.5,
+      "n": 10,
+      "mean_a": 8.0,
+      "mean_b": 7.2,
+      "mean_offset_a_minus_b": 0.8,
       "pairs_a_b": [
         [
           6.0,
@@ -29,6 +29,30 @@
         [
           6.0,
           6.0
+        ],
+        [
+          7.0,
+          6.0
+        ],
+        [
+          9.0,
+          8.0
+        ],
+        [
+          9.0,
+          8.0
+        ],
+        [
+          7.0,
+          6.0
+        ],
+        [
+          9.0,
+          8.0
+        ],
+        [
+          9.0,
+          8.0
         ],
         [
           9.0,
@@ -41,10 +65,10 @@
       ]
     },
     "旁白自然": {
-      "n": 4,
-      "mean_a": 9.0,
-      "mean_b": 8.5,
-      "mean_offset_a_minus_b": 0.5,
+      "n": 10,
+      "mean_a": 7.8,
+      "mean_b": 7.2,
+      "mean_offset_a_minus_b": 0.6,
       "pairs_a_b": [
         [
           9.0,
@@ -56,19 +80,43 @@
         ],
         [
           9.0,
+          8.0
+        ],
+        [
+          9.0,
           9.0
         ],
         [
           9.0,
           9.0
+        ],
+        [
+          9.0,
+          8.0
+        ],
+        [
+          6.0,
+          6.0
+        ],
+        [
+          6.0,
+          6.0
+        ],
+        [
+          6.0,
+          6.0
+        ],
+        [
+          6.0,
+          4.0
         ]
       ]
     },
     "可生成性": {
-      "n": 4,
-      "mean_a": 7.25,
-      "mean_b": 8.75,
-      "mean_offset_a_minus_b": -1.5,
+      "n": 10,
+      "mean_a": 7.8,
+      "mean_b": 8.8,
+      "mean_offset_a_minus_b": -1.0,
       "pairs_a_b": [
         [
           7.0,
@@ -79,11 +127,35 @@
           9.0
         ],
         [
+          8.0,
+          9.0
+        ],
+        [
           6.0,
-          8.0
+          9.0
         ],
         [
           8.0,
+          9.0
+        ],
+        [
+          8.0,
+          7.0
+        ],
+        [
+          7.0,
+          9.0
+        ],
+        [
+          9.0,
+          9.0
+        ],
+        [
+          8.0,
+          9.0
+        ],
+        [
+          9.0,
           9.0
         ]
       ]
@@ -126,7 +198,11 @@
         "旁白自然": 9.0,
         "可生成性": 8.0
       },
-      "judge.deepseek-text": {}
+      "judge.deepseek-text": {
+        "叙事完整": 6.0,
+        "旁白自然": 8.0,
+        "可生成性": 9.0
+      }
     },
     {
       "i": 4,
@@ -139,7 +215,7 @@
       "judge.deepseek-text": {
         "叙事完整": 8.0,
         "旁白自然": 9.0,
-        "可生成性": 8.0
+        "可生成性": 9.0
       }
     },
     {
@@ -153,6 +229,76 @@
       "judge.deepseek-text": {
         "叙事完整": 8.0,
         "旁白自然": 9.0,
+        "可生成性": 9.0
+      }
+    },
+    {
+      "i": 6,
+      "source": "experiments/story_ref2va_check/20260816_124438_f16c96/artifacts/script/script.json",
+      "judge.openai-compat": {
+        "叙事完整": 7.0,
+        "旁白自然": 9.0,
+        "可生成性": 8.0
+      },
+      "judge.deepseek-text": {
+        "叙事完整": 6.0,
+        "旁白自然": 8.0,
+        "可生成性": 7.0
+      }
+    },
+    {
+      "i": 7,
+      "source": "experiments/story_short/20260814_213042_1692e2/artifacts/script/script.json",
+      "judge.openai-compat": {
+        "叙事完整": 9.0,
+        "旁白自然": 6.0,
+        "可生成性": 7.0
+      },
+      "judge.deepseek-text": {
+        "叙事完整": 8.0,
+        "旁白自然": 6.0,
+        "可生成性": 9.0
+      }
+    },
+    {
+      "i": 8,
+      "source": "experiments/story_short/20260815_000309_b2ddfd/artifacts/script/script.json",
+      "judge.openai-compat": {
+        "叙事完整": 9.0,
+        "旁白自然": 6.0,
+        "可生成性": 9.0
+      },
+      "judge.deepseek-text": {
+        "叙事完整": 8.0,
+        "旁白自然": 6.0,
+        "可生成性": 9.0
+      }
+    },
+    {
+      "i": 9,
+      "source": "experiments/story_short/20260815_035745_dc6795/artifacts/script/script.json",
+      "judge.openai-compat": {
+        "叙事完整": 9.0,
+        "旁白自然": 6.0,
+        "可生成性": 8.0
+      },
+      "judge.deepseek-text": {
+        "叙事完整": 8.0,
+        "旁白自然": 6.0,
+        "可生成性": 9.0
+      }
+    },
+    {
+      "i": 10,
+      "source": "experiments/story_short/20260815_053752_936037/artifacts/script/script.json",
+      "judge.openai-compat": {
+        "叙事完整": 9.0,
+        "旁白自然": 6.0,
+        "可生成性": 9.0
+      },
+      "judge.deepseek-text": {
+        "叙事完整": 8.0,
+        "旁白自然": 4.0,
         "可生成性": 9.0
       }
     }

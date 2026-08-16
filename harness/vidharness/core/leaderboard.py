@@ -16,11 +16,50 @@ from typing import Any, Dict, List, Tuple
 from .report import collect
 
 
-def build(base_dir: Path, task: str) -> Dict[str, Any]:
-    """当前基线数据（不落盘）。"""
+def _calibration_offsets(calib_dir: Path) -> Dict[str, Dict[str, float]]:
+    """读取校准目录：{judge_b 名称: {维度: 偏移(a-b)}}，只取 n>=3 的维度。
+
+    偏移语义：a = b + offset → 把 judge_b 的评分换算到 judge_a 口径
+    （b_cal = b + offset）。
+    """
+    out: Dict[str, Dict[str, float]] = {}
+    for f in sorted(calib_dir.glob("*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(d, dict) or not d.get("judge_b"):
+            continue
+        dims = {}
+        for dim, v in (d.get("dims") or {}).items():
+            if isinstance(v, dict) and v.get("n", 0) >= 3:
+                dims[dim] = float(v["mean_offset_a_minus_b"])
+        if dims:
+            out[str(d["judge_b"])] = dims
+    return out
+
+
+def build(base_dir: Path, task: str, calibrate: bool = False,
+          calib_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """当前基线数据（不落盘）。
+
+    calibrate=True 时：对使用过校准对象裁判的 run，按 calibration 的
+    维度偏移（n>=3）把该裁判的评分换算到主裁判口径，标注 calibrated。
+    """
     runs = collect(base_dir, task)
+    offsets_by_judge = _calibration_offsets(calib_dir) if (calibrate and calib_dir) else {}
     rows: List[Dict[str, Any]] = []
     for r in runs:
+        calibrated = False
+        scores_cal = dict(r["scores"])
+        for judge_b, dim_offsets in offsets_by_judge.items():
+            used = any(judge_b in j for j in r.get("judge_adapters", []))
+            if not used:
+                continue
+            for dim, off in dim_offsets.items():
+                if dim in scores_cal:
+                    scores_cal[dim] = round(scores_cal[dim] + off, 2)
+                    calibrated = True
         rows.append({
             "run_id": r["run_id"],
             "bench_cell": r["bench_cell"],
@@ -29,6 +68,8 @@ def build(base_dir: Path, task: str) -> Dict[str, Any]:
             "judge_adapters": r["judge_adapters"],
             "scores": r["scores"],
             "stage_scores": r["stage_scores"],
+            "calibrated": calibrated,
+            "scores_calibrated": scores_cal if calibrated else r["scores"],
             "passed_rate": r["passed_rate"],
             "total_cost_usd": r["total_cost_usd"],
             "total_elapsed_s": r["total_elapsed_s"],
@@ -48,9 +89,10 @@ def _load_baseline(path: Path) -> Dict[str, Any]:
         return {}
 
 
-def export(base_dir: Path, task: str, out_dir: Path) -> Tuple[Path, Path, Dict[str, Any]]:
+def export(base_dir: Path, task: str, out_dir: Path, calibrate: bool = False) -> Tuple[Path, Path, Dict[str, Any]]:
     """导出基线并返回 (json 路径, md 路径, 与上次基线的增量 diff)。"""
-    data = build(base_dir, task)
+    data = build(base_dir, task, calibrate=calibrate,
+                 calib_dir=out_dir.parent / "calibration")
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"{task}.json"
     md_path = out_dir / f"{task}.md"
@@ -68,14 +110,14 @@ def export(base_dir: Path, task: str, out_dir: Path) -> Tuple[Path, Path, Dict[s
     return json_path, md_path, diff
 
 
-def export_all(base_dir: Path, out_dir: Path) -> Dict[str, Any]:
+def export_all(base_dir: Path, out_dir: Path, calibrate: bool = False) -> Dict[str, Any]:
     """导出 experiments 下所有任务的基线并渲染 index.html（公开页面雏形）。"""
     exported = {}
     tasks = sorted(d.name for d in Path(base_dir).iterdir()
                    if d.is_dir() and any((d / r / "manifest.json").exists()
                                          for r in d.iterdir() if r.is_dir()))
     for task in tasks:
-        _, _, diff = export(base_dir, task, out_dir)
+        _, _, diff = export(base_dir, task, out_dir, calibrate=calibrate)
         exported[task] = diff
     index = render_index(out_dir)
     return {"tasks": exported, "index": str(index)}
@@ -187,6 +229,10 @@ def _render_md(data: Dict[str, Any]) -> str:
             f"> ⚠️ 本表混用裁判 {sorted(judges_used)}：评分尺度不可直接对比（E24），"
             f"请参考 calibration/ 校准数据。")
         lines.append("")
+    if any(r.get("calibrated") for r in rows):
+        lines.append("> 📐 标（校准）的评分已按 calibration/ 维度偏移（n≥3）"
+                     "换算到主裁判口径（E30）。")
+        lines.append("")
     lines += [
         "| Run | Bench 格 | 衔接 | 模型 | 裁判 | 各维度均分 | 通过率 | 成本(USD) | GPU时 |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -196,11 +242,13 @@ def _render_md(data: Dict[str, Any]) -> str:
         chain = r.get("chain_mode") or "-"
         models = ", ".join(r.get("models") or ["-"])
         judges = ", ".join(r.get("judge_adapters") or ["-"])
+        scores = r.get("scores_calibrated", r.get("scores", {}))
+        marker = "（校准）" if r.get("calibrated") else ""
         passed = r.get("passed_rate")
         passed = "-" if passed is None else f"{passed * 100:.0f}%"
         lines.append(
             f"| {r['run_id']} | {cell} | {chain} | {models} | {judges} | "
-            f"{_fmt_scores(r.get('scores', {}))} | {passed} | "
+            f"{_fmt_scores(scores)}{marker} | {passed} | "
             f"{r['total_cost_usd']:.4f} | {r.get('local_gpu_hours') or '-'} |")
     lines.append("")
     return "\n".join(lines)
