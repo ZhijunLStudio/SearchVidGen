@@ -1774,7 +1774,8 @@ class TestLegacyJudgeInference:
             '{"raw": "x", "scores": {}}', encoding="utf-8")
         (exp.final_dir / "final_video.mp4").write_bytes(b"fake")  # 旧口径完整性
         runs = collect(tmp_path, "t")
-        assert runs[0]["judge_adapters"] == ["judge.openai-compat（推断：旧布局未记录）"]
+        assert runs[0]["judge_adapters"] == \
+            ["judge.openai-compat（推断：旧布局未记录，裁判版本未知，跨期不可比）"]
 
 
 class TestCalibratedLeaderboard:

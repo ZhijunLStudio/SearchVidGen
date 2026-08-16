@@ -1,8 +1,8 @@
 # Changelog
 
-VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-47）。
-完整决策记录见 `.agents/notes/`（41 篇 Agent Note：40 implemented + 1 proposed），实验证据见
-`README.md` E1-E41，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-48）。
+完整决策记录见 `.agents/notes/`（42 篇 Agent Note：41 implemented + 1 proposed），实验证据见
+`README.md` E1-E42，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
@@ -18,6 +18,8 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
   （manifest.title 经事件流），leaderboard/报告/详情页三处渲染
   （report.collect 单一正源；`SegmentDirector.run(before_finalize=...)`
   钩子保证 finalize 前挂入，E40 真实 API 实证）
+- **裁判重复评测工具** `scripts/judge_repeatability.py`：同视频同口径
+  重复评测（口径读 run 快照零硬编码，结果落事件溯源实验），E42 实证
 
 ### 修复
 
@@ -30,15 +32,20 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
   损坏 manifest 续跑 fail-loud、save_eval 从事件流重建、finalize 成本
   口径 warning、报告损坏 JSON 可见、script 裁判 outage 落 error 记录、
   中段末帧失败可见（新增 "warning" 事件通道）
+- **旧布局裁判推断标注强化（E42）**："judge.openai-compat（推断：旧布局
+  未记录，裁判版本未知，跨期不可比）"——同名 adapter 跨代不可比的
+  口径警示进 leaderboard/报告
 
-### 实验证据（E31-E41）
+### 实验证据（E31-E42）
 
 bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
 自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
 E37 机制级因果 A/B：经验注入 +0.70，旁白自然 +2.2 对应被教导维度）、
 GPU 级下游效应诚实负结果（E38）、API 适配器 mock 协议验证（E39）、
 session title 全链路落地（E40，真实 API $0.000017/次）、静默行为审计
-（E41，6 处吞异常路径可见化/响亮化 + 真实 run 副本验证）。
+（E41，6 处吞异常路径可见化/响亮化 + 真实 run 副本验证）、裁判重复
+评测方差分解（E42：本代裁判 sd=0 确定性，臂间方差全部来自生成；
+8-14 裁判与今日跨代不可比，实证 5.0→10.0）。
 
 ## v0.2.0（2026-08-16）
 

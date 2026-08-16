@@ -84,10 +84,12 @@ def collect(base_dir: Path, task: str) -> List[Dict[str, Any]]:
         judge_adapters = sorted({a.get("meta", {}).get("adapter", "?")
                                  for a in manifest.get("stages", {}).get("judge", [])})
         # 旧 run（8-16 前，E12 布局）：裁判原始输出在 eval/judge_*.json 且
-        # 未记录 adapter——该时代唯一裁判是 judge.openai-compat，推断标注
+        # 未记录 adapter——该时代裁判是 judge.openai-compat 的同名旧版本
+        # （E42 实测：同视频 8-14 记 5.0，今日裁判 10.0，跨期不可比），
+        # 推断标注必须带上版本未知的口径警示
         if not judge_adapters and any(
                 f.name.startswith("judge_") for f in (run_dir / "eval").glob("judge_*.json")):
-            judge_adapters = ["judge.openai-compat（推断：旧布局未记录）"]
+            judge_adapters = ["judge.openai-compat（推断：旧布局未记录，裁判版本未知，跨期不可比）"]
         runs.append({
             "run_id": manifest.get("run_id", run_dir.name),
             "dir": str(run_dir),
