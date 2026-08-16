@@ -53,10 +53,13 @@ before_encode 拆到了**条件侧**、image 却一直留在**生成侧**——k
   首帧与锚点平均绝对差 20.15/255——强条件化）；E8 的"冻结帧/叙事推进 1.0"
   结论重新获得有效基础——且提示：**基准数据必须标注生成路径版本，
   路径级 bug 会悄悄使旧结论失效**。
-- 残留容量约束（E20）：双卡 fl2va 的段 2+（视频末帧作 keyframe）在
-  A800-80GB 上仍 OOM（78.2/79.25GB，条件行额外显存；120/192 帧均差
-  ~1GB）。E5 同款问题、E7 同款解法候选：生成侧 transformer 块级
-  offload（int8 配方同思路），列为下一轮工作。
+- 残留容量约束（E20 已解决）：双卡 fl2va 的段 2+（视频末帧作 keyframe）在
+  auto offload 下 OOM（78.2/79.25GB，条件行额外显存）。同日按 E7 配方解决：
+  生成侧 `rest.transformer.enable_group_offload(block_level,
+  num_blocks_per_group=1)` + VAE 常驻 + `_device` 兜底，且**不用 auto
+  manager**（两套放置机制打架）。实测生成侧显存 78GB → **24GB**，
+  story_fl2va_check 完整跑通（段间衔接差 25.59/255，跨段一致性 10.0），
+  代价是每步变慢（块级流式）。
 - E6 笔记的"条件侧必须合并 before_encode+text_encoder"补记为 ref2va 专属，
   并加 fl2va 拆分警告。
 - 拆分口径对 diffusers 子块结构敏感：升级 diffusers 后需重跑

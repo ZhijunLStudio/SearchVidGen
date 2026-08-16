@@ -24,6 +24,11 @@ ref2va（参考图软衔接）把参考 latent 拼入打包序列：生成侧 tr
 
 效果：ref2va 单卡显存 78GB → **38GB**，5s 测试 342s 完成（含 ~4.5min 加载）。
 
+配方复用（2026-08-16）：双卡 fl2va 生成侧段 2+ OOM（E20）采用同款思路——
+`rest.transformer.enable_group_offload(block_level, num_blocks_per_group=1)`
++ VAE 常驻 + `_device` 兜底，且**不用 auto_cpu_offload manager**（两套放置
+机制会打架）。块级流式以每步变慢为代价换显存余量。
+
 配套经验（E6，双卡拆分的通用要点，int8 同样适用）：
 - **ref2va** 条件侧必须合并 before_encode + text_encoder 两个子块
   （`SequentialPipelineBlocks.from_blocks_dict`）：参考编码器在 text_encoder 内、

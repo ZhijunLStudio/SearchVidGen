@@ -171,11 +171,28 @@ class MiniMaxH3Local:
             conditioner.load_components(dtype=torch.bfloat16,
                                         pretrained_model_name_or_path=self.model_path)
 
-            manager = ComponentsManager()
-            manager.enable_auto_cpu_offload(device="cuda:1")
-            rest = workflow.init_pipeline(self.model_path, components_manager=manager)
-            rest.load_components(dtype=torch.bfloat16,
-                                 pretrained_model_name_or_path=self.model_path)
+            if self.variant == "fl2va":
+                # E20：fl2va 条件行额外显存，auto offload 下段 2+ OOM
+                # （78.2/79.25GB）。E7 同款配方：生成侧 transformer 块级
+                # 流式 offload + VAE 常驻 + 显式执行设备（不用 auto manager，
+                # 避免两套放置机制打架）。
+                manager = ComponentsManager()
+                rest = workflow.init_pipeline(self.model_path, components_manager=manager)
+                rest.load_components(dtype=torch.bfloat16,
+                                     pretrained_model_name_or_path=self.model_path)
+                offload = dict(onload_device=torch.device("cuda:1"),
+                               offload_device=torch.device("cpu"), use_stream=True)
+                rest.transformer.enable_group_offload(
+                    offload_type="block_level", num_blocks_per_group=1, **offload)
+                rest.vae.to("cuda:1")
+                rest.audio_vae.to("cuda:1")
+                rest._device = torch.device("cuda:1")   # 显式执行设备兜底
+            else:
+                manager = ComponentsManager()
+                manager.enable_auto_cpu_offload(device="cuda:1")
+                rest = workflow.init_pipeline(self.model_path, components_manager=manager)
+                rest.load_components(dtype=torch.bfloat16,
+                                     pretrained_model_name_or_path=self.model_path)
             self.version = "diffusers-main"
             self._pipe = (conditioner, rest)
         return self._pipe
