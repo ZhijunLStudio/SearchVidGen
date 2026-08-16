@@ -18,7 +18,8 @@ from .judge_loop import run_judge
 
 class ScriptOptimizer:
     def __init__(self, script_adapter, judge, memory, exp, rounds: int = 2,
-                 candidates: int = 2, target_score: float = 7.5, segments: int = 4):
+                 candidates: int = 2, target_score: float = 7.5, segments: int = 4,
+                 temperature_schedule=None):
         self.script_adapter = script_adapter
         self.judge = judge
         self.memory = memory
@@ -27,6 +28,9 @@ class ScriptOptimizer:
         self.candidates = candidates
         self.target_score = target_score
         self.segments = segments
+        # 候选多样性（E26）：同温度候选太相似，优化增益归零；
+        # 默认按候选轮转温度，覆盖时经 generate(kw temperature) 生效
+        self.temperature_schedule = temperature_schedule or [0.6, 0.9, 1.2]
 
     def _judge_script(self, art, criteria: List[JudgeCriteria]) -> Dict[str, Any]:
         # 把剧本内容嵌入问题（完整规格随协议传递，权重/阈值不丢失）
@@ -52,8 +56,11 @@ class ScriptOptimizer:
                     "segments": self.segments,
                     "experience": self.memory.experience_lines(),
                 }
+                # 候选温度轮转（多样性；适配器支持时经 kw 覆盖生效）
+                temp = self.temperature_schedule[
+                    ((rnd - 1) * self.candidates + k) % len(self.temperature_schedule)]
                 art = self.script_adapter.generate(
-                    query=query, template=template, workdir=workdir)
+                    query=query, template=template, workdir=workdir, temperature=temp)
                 self.exp.save_artifact("script", art, name=f"script_r{rnd}c{k + 1}")
                 try:
                     verdict = self._judge_script(art, criteria)

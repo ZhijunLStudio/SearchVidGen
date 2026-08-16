@@ -1589,3 +1589,66 @@ class TestJudgeSourceAnnotation:
         json_p, md_p, _ = export(tmp_path, "t", tmp_path / "lb")
         md = md_p.read_text(encoding="utf-8")
         assert "混用裁判" in md and "judge.deepseek-text" in md and "judge.openai-compat" in md
+
+
+class TestOptimizerTemperatureSchedule:
+    def test_candidates_rotate_temperatures(self, tmp_path):
+        """E26 回归：候选必须温度轮转（同温候选无多样性，优化增益归零）。"""
+        from vidharness.consumers.script_optimizer import ScriptOptimizer
+        from vidharness.core.memory import ExperienceMemory
+        temps = []
+
+        class FakeScriptAdapter:
+            name = "fake"
+            def generate(self, query, template, workdir, **kw):
+                temps.append(kw.get("temperature"))
+                payload = {"segments": [{"video_prompt": "p", "narration": "n", "duration": 8}]}
+                path = Path(workdir) / "s.json"
+                path.write_text(json.dumps(payload))
+                return Artifact(kind="script", path=path, meta=ArtifactMeta(), payload=payload)
+
+        class FakeJudge:
+            def judge(self, media, criteria, workdir, **kw):
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = Path(workdir) / "j.json"
+                path.write_text("{}", encoding="utf-8")
+                return Artifact(kind="scores", path=path, meta=ArtifactMeta(),
+                                payload={"scores": {"旁白自然": 6.0}, "feedback": "pass"})
+
+        exp = Experiment(task="t", base_dir=tmp_path)
+        opt = ScriptOptimizer(FakeScriptAdapter(), FakeJudge(),
+                              ExperienceMemory(tmp_path / "_memory.jsonl"), exp,
+                              rounds=2, candidates=2, target_score=9.9)
+        opt.optimize("目标", "brief", [JudgeCriteria(name="旁白自然", question="q", min_score=6)],
+                     tmp_path / "s")
+        assert temps == [0.6, 0.9, 1.2, 0.6]   # 2轮×2候选按 [0.6,0.9,1.2] 轮转
+
+
+class TestScriptTemperatureOverride:
+    def test_deepseek_script_kw_temperature(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+        captured = {}
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+            @property
+            def chat(self):
+                return self
+            @property
+            def completions(self):
+                return self
+            def create(self, **kw):
+                captured["create"] = kw
+                msg = SimpleNamespace(content='{"segments": []}')
+                choice = SimpleNamespace(message=msg)
+                return SimpleNamespace(choices=[choice], model="deepseek-chat",
+                                       usage=SimpleNamespace(prompt_tokens=10,
+                                                            completion_tokens=10))
+        monkeypatch.setattr("vidharness.providers.deepseek_script.OpenAI", FakeClient)
+        gen = instantiate("script.deepseek-v4-flash", {"api_key": "k", "temperature": 0.7})
+        art = gen.generate("q", {}, tmp_path, temperature=1.2)
+        assert captured["create"]["temperature"] == 1.2     # kw 覆盖生效
+        assert captured["create"]["response_format"] == {"type": "json_object"}
+        assert art.meta.params["temperature"] == 1.2        # meta 记录有效温度
+        gen.generate("q", {}, tmp_path)
+        assert captured["create"]["temperature"] == 0.7     # 缺省用构造温度

@@ -42,14 +42,18 @@ class DeepSeekScriptGenerator:
         "model": {"type": "str", "default": "deepseek-chat"},
         "temperature": {"type": "float", "default": 0.7},
         "max_tokens": {"type": "int", "default": 8192},
+        "json_mode": {"type": "bool", "default": True,
+                      "help": "response_format=json_object（E25 同源：解析健壮性）"},
     }
 
     def __init__(self, api_key: str | None = None, base_url: str = "https://api.deepseek.com",
-                 model: str = "deepseek-chat", temperature: float = 0.7, max_tokens: int = 8192):
+                 model: str = "deepseek-chat", temperature: float = 0.7,
+                 max_tokens: int = 8192, json_mode: bool = True):
         self.client = OpenAI(api_key=api_key or _load_token(), base_url=base_url)
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.json_mode = json_mode
 
     def generate(self, query: str, template: Dict[str, Any], workdir: Path, **kw) -> Artifact:
         import time as _t
@@ -66,20 +70,28 @@ class DeepSeekScriptGenerator:
         user = build_script_prompt(query, template)
         brief = template.get("brief")
         experience = template.get("experience", [])
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if self.json_mode:
+            # E25 同源修复：JSON 模式保证剧本输出可解析（提示含 "JSON" 满足前置条件）
+            kwargs["response_format"] = {"type": "json_object"}
+        # 生成时温度覆盖（E26：优化器候选多样性的 seam 级能力）
+        effective_temperature = kw.get("temperature", self.temperature)
+        if effective_temperature is not None:
+            kwargs["temperature"] = effective_temperature
+        resp = self.client.chat.completions.create(**kwargs)
         content = resp.choices[0].message.content
         data = parse_script_json(content)
         path = workdir / "script.json"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         meta = ArtifactMeta(
             adapter=self.name, model=resp.model,
-            params={"temperature": self.temperature, "max_tokens": self.max_tokens,
+            params={"temperature": effective_temperature, "max_tokens": self.max_tokens,
                     "brief": brief, "n_experience": len(experience),
                     # 可重建：完整输入模板落盘（对齐"模型可见 ⟺ 日志"）
                     "template": template},
