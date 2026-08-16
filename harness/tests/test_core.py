@@ -2210,3 +2210,85 @@ class TestBenchRepeats:
         with pytest.raises(BenchError, match="正整数"):
             plan({"bench": {"base": str(base), "matrix": [{"segments": [1]}],
                             "repeats": 0}})
+
+
+class TestMiniMaxAPIMock:
+    """generator.minimax-h3-api 协议级端到端（mock 官方 API，无 key 验证）。
+
+    覆盖：文件上传、创建任务、轮询、下载、产物/成本口径。
+    """
+
+    def _mock_server(self, tmp_path):
+        import http.server
+        import threading
+        from pathlib import Path
+        import subprocess
+
+        # 用 ffmpeg 生成一个 1 秒真实 mp4（若有 ffmpeg；否则最小字节占位）
+        vid = tmp_path / "mock.mp4"
+        try:
+            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                            "color=c=blue:s=64x64:d=1", "-c:v", "libx264",
+                            str(vid)], capture_output=True, check=True)
+        except Exception:
+            vid.write_bytes(b"fake-mp4")
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                self.rfile.read(length)
+                if self.path.startswith("/v1/files/upload"):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"file": {"url": "http://127.0.0.1:%d/vid.mp4"}}'
+                                     % self.server.server_port)
+                elif self.path == "/v2/video_generation":
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"task_id": "mock-task-1"}')
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def do_GET(self):
+                if self.path == "/v2/query/video_generation?task_id=mock-task-1":
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(
+                        b'{"task": {"status": "succeeded", "content": {"url": '
+                        b'"http://127.0.0.1:%d/vid.mp4"}}}' % self.server.server_port)
+                elif self.path == "/vid.mp4":
+                    data = vid.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server
+
+    def test_api_adapter_end_to_end(self, tmp_path):
+        from vidharness.core.registry import load_builtin_adapters, instantiate
+        from vidharness.seams import GenRequest
+        load_builtin_adapters()
+        server = self._mock_server(tmp_path)
+        try:
+            gen = instantiate("generator.minimax-h3-api", {
+                "api_key": "k", "base_url": f"http://127.0.0.1:{server.server_port}",
+                "resolution": "768P", "duration": 5})
+            art = gen.generate(GenRequest(text="一只小猫", duration=5),
+                               tmp_path / "out")
+            assert art.kind == "video" and art.path.exists()
+            assert art.meta.adapter == "generator.minimax-h3-api"
+            assert art.meta.cost_usd > 0            # 计费口径（768P 声明单价）
+            assert art.meta.params["resolution"] == "768P"
+        finally:
+            server.shutdown()
