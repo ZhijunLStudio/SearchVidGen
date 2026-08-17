@@ -101,6 +101,11 @@ harness/vidharness/
     （manifest.title，经事件流），leaderboard/报告直接可读；
     finalize 前经 `SegmentDirector.run(before_finalize=...)` 钩子挂入，
     保证落盘与不变量校验覆盖（E40）。
+12. **任务种类路由（不强制"故事"）**：`task.kind` = story（LLM 分镜
+    故事，原有）/ single（query 即视频指令 → 单条生成+评测 → 成片）/
+    shots（task.clips 多条指令 → 各自生成+评测 → 拼接）。非 story
+    任务无 LLM 剧本、无跨段叙事评测、无旁白——通用视频生成的最小
+    形态（E46；脚本缝与叙事评测是 story 的构件而非一切任务的构件）。
 
 ## 决策记忆（Agent Notes）
 
@@ -545,6 +550,20 @@ E42（裁判 sd=0）+ E43（同种子 MAE=0）消除三层噪声后，用配对�
 - 顺带修复：裁判宕机中断续跑后缓存命中的段跳过评测且无记录 →
   记占位 error 记录（`_has_seg_judge_record`）；新工具
   `scripts/compare_arm_pairs.py`（配对 A/B 通用分析器）
+
+### E46：任务种类路由——消除"一切皆故事"偏见（2026-08-17，通用化 R1）
+用户直击：harness 一直以故事形态做视频，不是通用化。自查确认偏见
+嵌在四层（强制 script 缝/导演人格/叙事评测与旁白总装/任务全是
+story 形态）——底座（注册表/缝/bench/事件溯源）通用，偏见在编排层：
+- **`task.kind` 路由**：story（原有）/ single（query 即视频指令）/
+  shots（task.clips 多条指令拼接）——非 story 任务无 LLM 剧本、
+  无跨段叙事评测、无旁白，生成+评测+成片三段复用同一套缝
+- 配置语义 fail-loud：shots 强制 clips、clips 只对 shots 有意义、
+  story 仍强制 script 缝；单测 +3（166 total）
+- 真实 GPU 验收尝试：GPU 4,6 被共享机器租户加载中途抢占（OOM
+  fail-loud，run 事件完整可续跑，experiments/shot_single/ 保留）——
+  续跑即验收；后续路线：shots 旁白可选/独立标题适配器/img2vid
+  kind（按需触发，不预防性建设）
 
 ### E40：run 标题自动生成——session title 全链路落地（2026-08-16）
 - 机制：`vh run`/`vh bench` 完成后、finalize 之前，用 script 提供者把

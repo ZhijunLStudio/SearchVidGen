@@ -80,6 +80,10 @@ def run_task(cfg: dict, query: str, output: str,
         # 标题在 finalize 之前挂入（finalize 落盘后 set_meta 不再持久化）
         if exp.manifest.get("title"):
             return
+        if director.script_adapter is None:
+            # 非 story 任务没有 LLM 剧本适配器（E46 通用化）；
+            # 独立标题适配器留作后续（标题是 UX 增强，不阻塞）
+            return
         title = _generate_run_title(director.script_adapter, query, exp)
         if title:
             print(f"  标题: {title}")

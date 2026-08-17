@@ -1,13 +1,20 @@
-"""SegmentDirector —— 跨片段故事编排（模型替代不了的那层）。
+"""SegmentDirector —— 通用视频生成编排（按 task.kind 路由，模型替代不了的那层）。
 
-单次生成模型上限 ~15s。一部 30-60s 的故事片 = 多次生成 + 上下文携带：
-  1. 剧本规划（LLM）：把故事拆成分镜计划（每段指令 + 旁白）
+三种任务形态（E46 通用化，不强制一切任务都是"故事"）：
+- story：LLM 剧本规划（分镜计划：每段指令 + 旁白）→ 逐段生成（锚点/
+  首尾帧衔接）→ 逐段评测 → 跨段叙事评测 → 旁白总装（原有形态）；
+- single：query 即视频指令 → 单条生成+评测 → 成片（无 LLM 剧本、
+  无叙事评测、无旁白）；
+- shots：task.clips 多条指令 → 各自生成+评测 → 拼接。
+
+单次生成模型上限 ~15s；一部多镜头成片 = 多次生成 + 上下文携带：
+  1. （story）剧本规划（LLM）
   2. 逐段生成（MediaGenerator）：段 i 的生成请求携带
      - 角色/风格锚点（参考图，来自全片设定）
      - 上一段末帧作为本段首帧条件（首尾帧衔接 → 结构性连续性）
   3. 逐段评测（Judge）：画面-指令一致 / 质量缺陷 / 音画同步
-  4. 跨段评测（Judge）：相邻段角色与场景延续性（跨调用一致性验证）
-  5. 总装：FFmpeg 拼接 + 旁白字幕（旁白文本是剧本自带的，无需 ASR）
+  4. （story）跨段评测（Judge）：相邻段角色与场景延续性
+  5. 总装：FFmpeg 拼接（story 附旁白字幕；旁白文本是剧本自带的）
 """
 from __future__ import annotations
 
@@ -27,13 +34,20 @@ class SegmentDirector:
         self.exp = exp
         self.cfg = config
         self._cache = adapters_cache
+        # 任务种类（E46 通用化）：story=LLM 分镜故事；single=query 即视频指令；
+        # shots=task.clips 多条指令。非 story 任务不经过 LLM 剧本与跨段叙事评测。
+        self.kind = config.get("kind", "story")
+        exp.set_meta("kind", self.kind)
         # 衔接策略：hard=首帧硬条件(fl2va) / ref=末帧作参考图(ref2va) / none=无衔接
         self.chain_mode = config.get("pipeline", {}).get("context", {}).get("chain_mode", "none")
 
-        self.script_adapter = instantiate(
-            config["pipeline"]["script"]["adapter"],
-            config["pipeline"]["script"].get("params", {}), context="script",
-            cache=self._cache)
+        # 剧本适配器只在 story 类任务需要（通用化：不强制一切任务带 LLM 剧本缝）
+        self.script_adapter: Optional[Any] = None
+        if self.kind == "story":
+            self.script_adapter = instantiate(
+                config["pipeline"]["script"]["adapter"],
+                config["pipeline"]["script"].get("params", {}), context="script",
+                cache=self._cache)
 
         gen_cfg = config["pipeline"]["generator"]
         if "route" in gen_cfg:
@@ -92,6 +106,7 @@ class SegmentDirector:
 
     # ---- 1. 剧本（自主优化循环：多轮生成 → 裁判评分 → 反馈入记忆 → 择优进化）----
     def stage_script(self, query: str) -> Dict[str, Any]:
+        assert self.script_adapter is not None, "stage_script 仅用于 story 类任务"
         # 断点续跑：剧本也要缓存（否则重跑的新剧本与已生成片段不对齐）
         existing = self.exp.find_existing("script", "script")
         if existing and existing.payload:
@@ -273,9 +288,15 @@ class SegmentDirector:
         return final
 
     def run(self, query: str, before_finalize: Optional[Callable[[], None]] = None) -> Path:
-        """执行全流水线。before_finalize 钩子在 finalize（落盘+不变量校验）
-        之前执行——供调用方挂入 run 级元信息（如标题，E40），确保经事件流
-        持久化且被 finalize 的总额/校验覆盖。"""
+        """执行流水线（按 task.kind 路由，E46 通用化）。
+
+        story：LLM 剧本 → 逐段生成+评测 → 跨段叙事评测 → 旁白总装；
+        single/shots：query/clips 直接作为视频指令 → 逐条生成+评测 →
+        拼接（无 LLM 剧本、无跨段叙事评测、无旁白）。
+        before_finalize 钩子在 finalize（落盘+不变量校验）之前执行——
+        供调用方挂入 run 级元信息（如标题，E40），确保经事件流
+        持久化且被 finalize 的总额/校验覆盖。
+        """
         def stage(name: str, fn):
             self.exp.stage_started(name)
             try:
@@ -283,28 +304,40 @@ class SegmentDirector:
             finally:
                 self.exp.stage_finished(name)
 
-        print(f"▶ [1/5] 剧本规划 ({self.script_adapter.name})")
-        script = stage("script", lambda: self.stage_script(query))
-        n = len(script.get("segments", []))
-        print(f"   分镜段数: {n}")
+        if self.kind == "story":
+            assert self.script_adapter is not None, "story 类任务必须有剧本适配器"
+            print(f"▶ [1/5] 剧本规划 ({self.script_adapter.name})")
+            script = stage("script", lambda: self.stage_script(query))
+            n = len(script.get("segments", []))
+            print(f"   分镜段数: {n}")
 
-        print(f"▶ [2/5] 逐段生成+评测 ({self.generator.name})")
-        videos = stage("segments", lambda: self.stage_segments(script))
+            print(f"▶ [2/5] 逐段生成+评测 ({self.generator.name})")
+            videos = stage("segments", lambda: self.stage_segments(script))
 
-        print(f"▶ [3/5] 跨段一致性评测 ({self.judges['cross_judge'].name})")
-        stage("cross_consistency", lambda: self.stage_cross_consistency(videos, script))
+            print(f"▶ [3/5] 跨段一致性评测 ({self.judges['cross_judge'].name})")
+            stage("cross_consistency", lambda: self.stage_cross_consistency(videos, script))
 
-        print("▶ [4/5] 成片总装")
-        final = stage("assemble", lambda: self.stage_assemble(videos, script))
+            print("▶ [4/5] 成片总装")
+            final = stage("assemble", lambda: self.stage_assemble(videos, script))
 
-        # 音频验证（可选）：转写原生音频，与旁白比对
-        audio_cfg = self.cfg.get("audio_verify")
-        if audio_cfg:
-            print(f"▶ [5/5] 音频验证 ({audio_cfg['adapter']})")
-            from .audio_verify import verify_film
-            narrations = [p.get("narration", "") for p in script.get("segments", [])]
-            stage("audio_verify", lambda: verify_film(
-                videos, narrations, audio_cfg["adapter"], self.exp))
+            # 音频验证（可选）：转写原生音频，与旁白比对
+            audio_cfg = self.cfg.get("audio_verify")
+            if audio_cfg:
+                print(f"▶ [5/5] 音频验证 ({audio_cfg['adapter']})")
+                from .audio_verify import verify_film
+                narrations = [p.get("narration", "") for p in script.get("segments", [])]
+                stage("audio_verify", lambda: verify_film(
+                    videos, narrations, audio_cfg["adapter"], self.exp))
+        else:
+            # single/shots：query/clips 即视频指令，不强制故事形态
+            plans = self._clip_plans(query)
+            print(f"▶ [1/2] 镜头生成+评测 ({self.generator.name})，"
+                  f"{len(plans)} 条指令")
+            videos = stage("segments", lambda: self.stage_segments(
+                {"segments": plans}))
+            print("▶ [2/2] 成片总装（拼接，无旁白）")
+            final = stage("assemble", lambda: self.stage_assemble(
+                videos, {"segments": plans}))
 
         if before_finalize is not None:
             before_finalize()
@@ -317,6 +350,17 @@ class SegmentDirector:
         return final
 
     # ---- 工具 ----
+    def _clip_plans(self, query: str) -> List[Dict[str, Any]]:
+        """single/shots 类任务的镜头指令列表（query/clips → plan 列表）。
+
+        与 story 剧本的 segments 同构（video_prompt/duration/ratio），
+        但来源是用户直接给的指令而非 LLM 拆解。
+        """
+        if self.kind == "single":
+            return [{"video_prompt": query}]
+        clips = self.cfg.get("clips") or []
+        return [dict(c) for c in clips]
+
     def _has_seg_judge_record(self, name: str) -> bool:
         """该段是否已有评测记录（缓存命中时判断证据完整性）。"""
         import json as _json

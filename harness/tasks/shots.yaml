@@ -1,0 +1,38 @@
+# 多镜头任务（kind: shots，E46 通用化）：
+# task.clips 多条指令各自生成 → 拼接成片，无 LLM 剧本/叙事评测/旁白。
+task_name: shots_demo
+kind: shots
+
+clips:
+  - {video_prompt: "航拍雪山脚下的小镇，清晨薄雾弥漫，镜头缓慢前推"}
+  - {video_prompt: "特写：一辆老旧的绿色邮差自行车靠在雪地里，雪花落在车座上"}
+
+pipeline:
+  generator:
+    adapter: generator.minimax-h3-local
+    params:
+      model_path: /data-ssd/lizhijun/models/MiniMax-H3
+      gpu: "4,6"
+      variant: t2va
+      steps: 20
+      seed: 20260816
+  context:
+    chain_mode: none
+    anchor_refs: []
+
+judge:
+  adapter: judge.openai-compat
+  params:
+    base_url: http://127.0.0.1:8030/v1
+    model: judge-qwen3.5-27b
+    frame_samples: 2
+    disable_thinking: true
+
+segment_judge:
+  - {name: 与指令一致性, question: "视频是否准确呈现生成指令的主体/动作/镜头？", weight: 1.0, min_score: 6}
+  - {name: 画面质量, question: "是否存在明显缺陷（畸形/闪变/崩坏）？", weight: 1.0, min_score: 6}
+
+segment_retry: {max_attempts: 1, inject_feedback: false}
+
+cost:
+  gpu_price_usd_per_hour: 1.2

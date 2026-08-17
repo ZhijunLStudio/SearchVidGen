@@ -2690,3 +2690,109 @@ class TestCachedSegmentJudgeGap:
         videos = director.stage_segments(script)
         assert len(videos) == 2
         assert not any("无评测记录" in e for e in self._errs(director))
+
+
+class TestTaskKinds:
+    """E46 通用化：story/single/shots 三类任务的配置校验与流水线路由。"""
+
+    def _cfg(self, kind=None, extra=None):
+        cfg = {
+            "task_name": "t",
+            "pipeline": {
+                "script": {"adapter": "script.cap-test", "params": {}},
+                "generator": {"adapter": "generator.text-only", "params": {}},
+                "context": {"chain_mode": "none", "anchor_refs": []},
+            },
+            "judge": {"adapter": "judge.cap-test", "params": {}},
+            "segment_judge": [
+                {"name": "与指令一致性", "question": "一致吗？", "min_score": 6}],
+        }
+        if kind:
+            cfg["kind"] = kind
+        if extra:
+            cfg.update(extra)
+        return cfg
+
+    def test_kind_validation_rules(self):
+        cfg = self._cfg(kind="single")
+        del cfg["pipeline"]["script"]            # single 不需要剧本缝
+        validate_task(cfg)
+        with pytest.raises(ConfigError, match="未知任务种类"):
+            validate_task(self._cfg(kind="video"))
+        with pytest.raises(ConfigError, match="需要 task.clips"):
+            validate_task(self._cfg(kind="shots"))
+        with pytest.raises(ConfigError, match="非空 video_prompt"):
+            validate_task(self._cfg(kind="shots",
+                                    extra={"clips": [{"video_prompt": ""}]}))
+        with pytest.raises(ConfigError, match="只对 kind=shots"):
+            validate_task(self._cfg(kind="single",
+                                    extra={"clips": [{"video_prompt": "p"}]}))
+        story = self._cfg()
+        del story["pipeline"]["script"]          # story 仍必须剧本缝
+        with pytest.raises(ConfigError, match="缺少 adapter"):
+            validate_task(story)
+
+    def _video_judge(self):
+        class VideoJudge:
+            name = "judge.video-fake"
+            modalities = ["text", "image", "video"]
+            def judge(self, media, criteria, workdir, **kw):
+                workdir = Path(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                path = workdir / "j.json"
+                path.write_text("{}")
+                return Artifact(kind="scores", path=path, meta=ArtifactMeta(),
+                                payload={"scores": {"与指令一致性": 8.0},
+                                         "feedback": "pass"})
+        return VideoJudge()
+
+    def test_single_kind_pipeline_skips_script_and_cross(self, tmp_path, monkeypatch):
+        from vidharness.consumers.segment_director import SegmentDirector
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+        monkeypatch.setattr(SegmentDirector, "stage_assemble",
+                            lambda self, videos, script: Path(tmp_path) / "final.mp4")
+        cfg = self._cfg(kind="single")
+        del cfg["pipeline"]["script"]
+        exp = Experiment(task="t", base_dir=tmp_path)
+        director = SegmentDirector(exp, cfg)
+        director.judges["segment_judge"] = self._video_judge()
+        assert director.script_adapter is None
+        final = director.run("一只猫在窗台上晒太阳")
+        assert final == Path(tmp_path) / "final.mp4"
+        started = {json.loads(line)["stage"] for line in
+                   exp.events_path.read_text(encoding="utf-8").splitlines()
+                   if json.loads(line)["type"] == "stage.started"}
+        assert started == {"segments", "assemble"}   # 无 script/cross 阶段
+        assert "script" not in exp.manifest["stages"]
+        assert "cross_consistency" not in exp.manifest["stages"]
+        assert (exp.eval_dir / "segments.json").exists()
+        assert not (exp.eval_dir / "cross_consistency.json").exists()
+        assert check_experiment(exp.root) == []      # finalize 后不变量通过
+
+    def test_shots_kind_generates_each_clip(self, tmp_path, monkeypatch):
+        from vidharness.consumers.segment_director import SegmentDirector
+        captured = {}
+        monkeypatch.setattr(SegmentDirector, "_extract_last_frame",
+                            staticmethod(lambda video, exp: None))
+        monkeypatch.setattr(SegmentDirector, "_extract_frame",
+                            staticmethod(lambda video, t, exp: None))
+
+        def fake_assemble(self, videos, script):
+            captured["n_videos"] = len(videos)
+            captured["narrations"] = [p.get("narration", "") for p in script["segments"]]
+            return Path(tmp_path) / "final.mp4"
+        monkeypatch.setattr(SegmentDirector, "stage_assemble", fake_assemble)
+        cfg = self._cfg(kind="shots", extra={"clips": [
+            {"video_prompt": "p1"}, {"video_prompt": "p2", "duration": 5}]})
+        del cfg["pipeline"]["script"]
+        exp = Experiment(task="t", base_dir=tmp_path)
+        director = SegmentDirector(exp, cfg)
+        director.judges["segment_judge"] = self._video_judge()
+        director.run("此 query 在 shots 类任务中不使用")
+        assert captured["n_videos"] == 2
+        assert captured["narrations"] == ["", ""]    # 无旁白（非故事形态）
+        assert len(exp.manifest["stages"]["segments"]) == 2
+        assert check_experiment(exp.root) == []

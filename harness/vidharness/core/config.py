@@ -13,6 +13,10 @@ from typing import Any, Dict
 
 CHAIN_MODES = ("none", "hard", "ref")
 
+# 任务种类（E46 通用化）：story=LLM 分镜故事（原有）；single=一条指令→一支视频；
+# shots=多条指令→各自生成→拼接。非 story 任务不经过 LLM 剧本与跨段叙事评测。
+TASK_KINDS = ("story", "single", "shots")
+
 CRITERIA_FIELDS = ("name", "question", "weight", "min_score", "aliases")
 RETRY_FIELDS = ("max_attempts", "inject_feedback", "feedback_prefix")
 
@@ -21,7 +25,7 @@ JUDGE_STAGE_KEYS = ("script_judge", "script_optimize", "segment_judge", "cross_j
 
 # 顶层/管线允许键（未知键 fail loud）
 TASK_KEYS = {
-    "task_name", "segments", "brief", "pipeline", "judge",
+    "task_name", "kind", "segments", "clips", "brief", "pipeline", "judge",
     "script_optimize", "script_judge", "script_retry",
     "segment_judge", "segment_retry", "cross_judge",
     "audio_verify", "memory", "cost",
@@ -98,16 +102,35 @@ def validate_task(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """校验任务配置；通过则原样返回，不合法则抛 ConfigError（fail loud）。"""
     _expect_type(cfg, "task", dict)
     _expect_keys(cfg, "task", TASK_KEYS)
+    kind = cfg.get("kind", "story")
+    if kind not in TASK_KINDS:
+        raise ConfigError(f"task.kind: 未知任务种类 '{kind}'（允许: {list(TASK_KINDS)}）")
     if "task_name" in cfg:
         _expect_type(cfg["task_name"], "task.task_name", str)
     if "segments" in cfg:
         _expect_type(cfg["segments"], "task.segments", int)
     if "brief" in cfg:
         _expect_type(cfg["brief"], "task.brief", str)
+    if "clips" in cfg:
+        if kind != "shots":
+            raise ConfigError(f"task.clips 只对 kind=shots 有意义（当前 kind={kind}）")
+        _expect_type(cfg["clips"], "task.clips", list)
+        if not cfg["clips"]:
+            raise ConfigError("task.clips: shots 任务需要至少一条镜头指令")
+        for i, c in enumerate(cfg["clips"]):
+            p = f"task.clips[{i}]"
+            _expect_type(c, p, dict)
+            if not isinstance(c.get("video_prompt"), str) or not c["video_prompt"]:
+                raise ConfigError(f"{p}: 缺少非空 video_prompt")
+    if kind == "shots" and not cfg.get("clips"):
+        raise ConfigError("kind=shots 需要 task.clips 镜头指令列表")
 
     _expect_type(cfg.get("pipeline", {}), "pipeline", dict)
     _expect_keys(cfg["pipeline"], "pipeline", PIPELINE_KEYS)
-    _check_adapter_block(cfg["pipeline"].get("script", {}), "pipeline.script")
+    # 剧本缝是 story 类任务的构件；single/shots 直接以 query/clips 为视频
+    # 指令（通用化：不强制一切任务都经过 LLM 拆故事，E46）
+    if kind == "story":
+        _check_adapter_block(cfg["pipeline"].get("script", {}), "pipeline.script")
     _check_adapter_block(cfg["pipeline"].get("generator", {}), "pipeline.generator",
                          need_route_ok=True)
 

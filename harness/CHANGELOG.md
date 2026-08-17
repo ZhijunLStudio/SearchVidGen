@@ -1,8 +1,8 @@
 # Changelog
 
-VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-51）。
-完整决策记录见 `.agents/notes/`（45 篇 Agent Note：44 implemented + 1 proposed），实验证据见
-`README.md` E1-E45，范式对照见 `docs/paradigm.md`。
+VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-52）。
+完整决策记录见 `.agents/notes/`（46 篇 Agent Note：45 implemented + 1 proposed），实验证据见
+`README.md` E1-E46，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
@@ -34,6 +34,11 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
   → warning 事件 + console（上线当天即逮住路径双重拼接）
 - **配对臂对比工具** `scripts/compare_arm_pairs.py`：剧本 diff/逐段
   MAE/评分 Δ 表的通用 A/B 分析器（E45）
+- **任务种类路由（E46 通用化 R1）**：`task.kind` = story/single/shots——
+  single=query 即视频指令，shots=task.clips 多条指令拼接；非 story
+  任务无 LLM 剧本/叙事评测/旁白；配置校验 fail-loud（shots 强制
+  clips、clips 只对 shots 有意义）；tasks/shot_single.yaml +
+  tasks/shots.yaml 模板
 
 ### 修复
 
@@ -59,7 +64,7 @@ VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-
   的段跳过评测且无记录——`_has_seg_judge_record` 检查 + 占位 error
   记录（证据缺口可见化）
 
-### 实验证据（E31-E45）
+### 实验证据（E31-E46）
 
 bench 缓存复用实测（cell2 省 53%）、记忆噪声清洗与迁移、语义聚类首次
 自动提升、优化预算消融（3×3 档 +0.52）、自学习闭环端到端（E34 方向 +
@@ -76,7 +81,9 @@ B=3.0，+7.0 下游效应——E38 是噪声假阴性，因果链记忆→剧本
 →跨段一致性闭合；记忆缺失警告上线当天逮住路径双重拼接）、记忆
 下游第二故事复测（E45：Δ=0.0——效应是故事条件性的/防护性，
 非普遍加分；一次 bench 三中断（外部击杀+裁判服务被回收）格级
-续跑两次恢复，续跑缓存段无评测记录缺口修复）。
+续跑两次恢复，续跑缓存段无评测记录缺口修复）、任务种类路由
+（E46：task.kind=story/single/shots 落地并全链单测——消除"一切
+皆故事"偏见，真实 GPU 验收因共享机租户抢占待续跑）。
 
 ## v0.2.0（2026-08-16）
 
