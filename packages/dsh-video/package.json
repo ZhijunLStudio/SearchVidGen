@@ -1,0 +1,49 @@
+{
+  "name": "@zhijunlstudio/dsh-video",
+  "version": "0.1.0",
+  "description": "视频生成能力缝（Service Definition）：生成器/裁判注册表、capabilities 声明与按能力路由（fail-loud）、评测结算协议（权重/阈值归消费者）。提供者见 @zhijunlstudio/dsh-video-provider，模型面工具见 @zhijunlstudio/dsh-video-tool。",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.mjs",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.mjs"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0-rc <5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@types/node": "^22.20.0",
+    "tsdown": "0.22.2",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT"
+}

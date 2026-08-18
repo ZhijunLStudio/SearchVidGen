@@ -1,0 +1,27 @@
+# @zhijunlstudio/dsh-video-provider 装配行：按配置注册生成器/裁判提供者到 ctx.video。
+# 缺省配置为空列表（不注册任何提供者）——用户在自己的 profile patch 里
+# 按需添加 remote/local/judge 配置行，或在 settings 层覆盖。
+# 示例（remote + judge）：
+#   - insert:
+#       - id: video-provider
+#         name: '@zhijunlstudio/dsh-video-provider'
+#         config:
+#           generators:
+#             - id: h3-api
+#               kind: remote
+#               protocol: minimax
+#               baseUrl: https://api.minimaxi.com
+#               model: MiniMax-H3
+#               credential: MINIMAX_API_KEY
+#               capabilities: {minDurationS: 3, maxDurationS: 15, audio: true, maxRefs: 9, firstLastFrame: true, resolutions: ["768P", "2K"]}
+#           judges:
+#             - id: vlm
+#               baseUrl: http://127.0.0.1:8030/v1
+#               model: judge-qwen3.5-27b
+#               modalities: [video, image]
+- insert:
+    - id: video-provider
+      name: '@zhijunlstudio/dsh-video-provider'
+      config:
+        generators: []
+        judges: []

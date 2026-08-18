@@ -1,0 +1,19 @@
+{
+  "name": "searchvidgen-dsh-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SearchVidGen v3: DeepSeek Harness 插件家族（视频生成能力缝 + 配置驱动提供者 + 模型面工具 + 视频生成模式 preset）。",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "vet": "pnpm typecheck && pnpm test && pnpm build",
+    "sync:preset": "node scripts/sync-preset.mjs"
+  },
+  "license": "MIT"
+}

@@ -6,6 +6,15 @@ generated_video_content/
 img/
 **/__pycache__/
 tmp/
+
+# dsh plugin monorepo
+node_modules/
+**/node_modules/
+packages/**/lib/
+.turbo/
+*.tsbuildinfo
+
 Wan2GP-main/
 index-tts-main/
 Wan2GP-v6.3/
+smoke/

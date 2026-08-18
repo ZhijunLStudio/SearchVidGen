@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: true
+
+# SDK peers 不自动安装，运行时由 DSH profile 树解析。
+autoInstallPeers: false

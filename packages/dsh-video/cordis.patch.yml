@@ -1,0 +1,6 @@
+# @zhijunlstudio/dsh-video 装配行：把 ctx.video 注册表挂到 host 平面（全局层）。
+# 提供者/工具包依赖本服务；本行通过 dsh.bundle.patch 装配，
+# 也可用 "dsh plugin --profile <name> add <本包>" 挂载。
+- insert:
+    - id: video-registry
+      name: '@zhijunlstudio/dsh-video'

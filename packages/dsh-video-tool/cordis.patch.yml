@@ -1,0 +1,7 @@
+# @zhijunlstudio/dsh-video-tool：默认不在全局挂工具（省 token、避免每个会话都带 5 个
+# 视频工具 schema）。「视频生成模式」preset（presets/video）的 agent.cordis.yml
+# 会把本包行挂到 agent 平面；想全局可用就把 disabled: true 去掉。
+- insert:
+    - id: video-tools-global
+      name: '@zhijunlstudio/dsh-video-tool'
+      disabled: true

@@ -1,0 +1,56 @@
+{
+  "name": "@zhijunlstudio/dsh-video-provider",
+  "version": "0.1.0",
+  "description": "配置驱动的视频生成/裁判提供者：remote（HTTP，openai/minimax 协议，URL/key/model 一行配置接入任何兼容端点）+ local（vh gen-single 子进程引擎，本机 GPU）+ remote-judge（OpenAI 兼容 VLM/文本裁判，视频抽帧）。新模型 = 新增一行配置，无需改代码。",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.mjs",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.mjs"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@zhijunlstudio/dsh-video": "workspace:*",
+    "schemastery": "^3.18.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0-rc <5",
+    "@deepseek-ai/dsh-credentials": ">=0.0.1-rc <2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
+    "@types/node": "^22.20.0",
+    "tsdown": "0.22.2",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.mjs",
+    "lib/**/*.d.ts",
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT"
+}
