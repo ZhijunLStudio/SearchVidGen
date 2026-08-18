@@ -10,6 +10,8 @@ pip install -e .                                  # 安装（vh 命令入口）
 vh adapters --verbose                             # 看能力与参数声明目录
 vh run tasks/story_smoke.yaml --query "雨夜，一只小猫在旧书店的橱窗前躲雨" \
    --output experiments                           # 最小真实端到端（2 段×19 步，~25 分钟 GPU）
+vh gen-single spec.json                           # 单段生成 JSON 契约（dsh-video-provider local 后端；
+   # spec 见 cli.py cmd_gen_single 文档字符串；stdout 单行 JSON，进度走 stderr）
 vh doctor experiments/story_smoke/<run_id>        # 运行时不变量体检
 vh leaderboard story_smoke                        # 导出基线（leaderboards/ 入库追踪）
 vh regress --output experiments                   # 变体回归套件状态（配置漂移检测）

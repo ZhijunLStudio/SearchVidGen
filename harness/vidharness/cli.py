@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any, Dict
 
 import yaml
 
@@ -297,6 +298,124 @@ def cmd_run(args):
                      ensure_ascii=False, indent=2))
 
 
+def cmd_gen_single(args):
+    """单段生成 JSON 子进程契约（dsh-video-provider 的 local 后端入口）。
+
+    读 JSON 规格文件，构造 kind=single 任务并复用 SegmentDirector 全套
+    机制（能力校验/评测闭环/事件溯源/成本结算），stdout 只输出一行 JSON
+    结果（进度日志重定向到 stderr），失败非零退出并在 stderr 给可读原因。
+
+    规格（spec.json）::
+      {
+        "text": "视频指令（必填）",
+        "refs": ["/path/ref.jpg"],            # 可选：角色/风格锚点
+        "duration": 8, "ratio": "16:9", "seed": 42,   # 可选
+        "generator": {"adapter": "generator.minimax-h3-local",
+                      "params": {"model_path": "...", "gpu": "4,6", ...}},
+        "judge": {"adapter": "judge.openai-compat", "params": {...},
+                  "criteria": [{"name": "与指令一致性", "question": "...",
+                                "weight": 1.0, "min_score": 6}]},   # 可选
+        "retry": {"max_attempts": 2, "inject_feedback": true},      # 可选
+        "ffmpeg_dir": "/path/to/bin",        # 可选：ffmpeg/ffprobe 所在目录
+                                             #   （prepend 到 PATH；本环境无 ffmpeg 时
+                                             #   保存视频会在最早点响亮失败）
+        "out": "/abs/dir"                    # 产物根目录（必填）
+      }
+
+    结果（stdout 单行 JSON）::
+      {"video": {"path": "...", "model": "...", "backend": "local",
+                 "params": {...}, "durationS": 8, "seed": 42},
+       "judge": {"scores": {...}, "score": 8.5, "passed": true,
+                 "feedback": "..."} | null,
+       "costUsd": 0.31, "elapsedS": 720.5, "runDir": "..."}
+    """
+    import contextlib
+    import sys
+    spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+    text = str(spec.get("text") or "").strip()
+    if not text:
+        raise SystemExit("gen-single: spec.text 不能为空")
+    gen = spec.get("generator") or {}
+    adapter = gen.get("adapter")
+    if not adapter:
+        raise SystemExit("gen-single: spec.generator.adapter 不能为空")
+    params = dict(gen.get("params") or {})
+    if spec.get("seed") is not None:
+        params.setdefault("seed", int(spec["seed"]))
+    out_dir = Path(spec.get("out") or ".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ffmpeg/ffprobe 常驻在模型环境之外（如 torch 环境 bin）；契约允许调用方
+    # 显式给出目录并 prepend 到 PATH——缺 ffmpeg 时下游仍会响亮失败。
+    ffmpeg_dir = spec.get("ffmpeg_dir")
+    if ffmpeg_dir:
+        import os as _os
+        _os.environ["PATH"] = str(ffmpeg_dir) + _os.pathsep + _os.environ.get("PATH", "")
+
+    judge = spec.get("judge") or {}
+    criteria = []
+    for c in judge.get("criteria") or []:
+        criteria.append({
+            "name": str(c["name"]), "question": str(c["question"]),
+            "weight": float(c.get("weight", 1.0)),
+            "min_score": float(c.get("min_score", 6.0))})
+    retry = spec.get("retry") or {}
+    cfg: Dict[str, Any] = {
+        "task_name": "single",
+        "kind": "single",
+        "pipeline": {
+            "generator": {"adapter": adapter, "params": params},
+            "context": {
+                "chain_mode": "none",
+                "anchor_refs": [str(r) for r in (spec.get("refs") or [])],
+                "ratio": str(spec.get("ratio", "16:9")),
+                "duration": spec.get("duration"),
+            },
+        },
+        "segment_judge": criteria,
+        "segment_retry": {
+            "max_attempts": int(retry.get("max_attempts", 1)),
+            "inject_feedback": bool(retry.get("inject_feedback", False))},
+        "memory": {"path": "_memory.jsonl"},
+        "cost": {"gpu_price_usd_per_hour":
+                 float(spec.get("gpu_price_usd_per_hour", 1.2))},
+    }
+    if judge.get("adapter"):
+        cfg["judge"] = {"adapter": judge["adapter"],
+                        "params": judge.get("params") or {}}
+
+    load_builtin_adapters()
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            final, root = run_task(cfg, text, str(out_dir))
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.stderr.write("gen-single 失败: " + type(e).__name__ + ": " + str(e) + "\n")
+        sys.exit(1)
+
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    judge_records = []
+    try:
+        judge_records = json.loads(
+            (root / "eval" / "segments.json").read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    result: Dict[str, Any] = {
+        "video": {"path": str(final), "model": adapter, "backend": "local",
+                  "params": params, "durationS": spec.get("duration"),
+                  "seed": spec.get("seed")},
+        "judge": judge_records[-1] if judge_records else None,
+        # 成本口径：本地 GPU 时间按卡时单价折算在 total_cost_usd_all
+        # （finalize 的成本结算正源），total_cost_usd 只含 API 产物声明
+        "costUsd": manifest.get("total_cost_usd_all", manifest.get("total_cost_usd")),
+        "elapsedS": manifest.get("total_elapsed_s"),
+        "localGpuHours": manifest.get("local_gpu_hours"),
+        "runDir": str(root),
+    }
+    sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+
 def cmd_bench(args):
     from .core.bench import plan
     load_builtin_adapters()
@@ -364,6 +483,11 @@ def main(argv=None):
     pr.add_argument("--output", default="experiments", help="实验输出根目录")
     pr.add_argument("--resume", default=None, help="续跑指定 run_id（断点续跑）")
     pr.set_defaults(fn=cmd_run)
+
+    pgs = sub.add_parser("gen-single",
+                         help="单段生成 JSON 契约（dsh-video-provider 的 local 后端）")
+    pgs.add_argument("spec", help="JSON 规格文件路径")
+    pgs.set_defaults(fn=cmd_gen_single)
 
     pb = sub.add_parser("bench", help="基准矩阵对比（规划期全格校验 + 逐格执行）")
     pb.add_argument("spec", help="bench spec YAML（含 bench: {base, matrix} 段）")

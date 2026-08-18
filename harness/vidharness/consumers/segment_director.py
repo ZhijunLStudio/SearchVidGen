@@ -73,9 +73,11 @@ class SegmentDirector:
         exp.set_meta("generator_capabilities", caps)
         exp.set_meta("chain_mode", self.chain_mode)
 
-        self.judge = instantiate(config["judge"]["adapter"],
-                                 config["judge"].get("params", {}), context="judge",
-                                 cache=self._cache)
+        # 裁判可选（vh gen-single 无裁判规格时不装配；run_with_judge 容忍 None）
+        judge_cfg = config.get("judge")
+        self.judge = instantiate(
+            judge_cfg["adapter"], judge_cfg.get("params", {}), context="judge",
+            cache=self._cache) if judge_cfg else None
         # 阶段级裁判路由（E16 待办①）：文本评测阶段（script_judge/optimize）
         # 可覆盖为 text-only 裁判（如 DeepSeek API），消除对 VLM 服务就绪的依赖；
         # 媒体评测阶段（segment/cross）默认用主裁判。
@@ -357,7 +359,11 @@ class SegmentDirector:
         但来源是用户直接给的指令而非 LLM 拆解。
         """
         if self.kind == "single":
-            return [{"video_prompt": query}]
+            plan: Dict[str, Any] = {"video_prompt": query}
+            ctx_cfg = self.cfg.get("pipeline", {}).get("context", {})
+            if ctx_cfg.get("duration"):
+                plan["duration"] = int(ctx_cfg["duration"])
+            return [plan]
         clips = self.cfg.get("clips") or []
         return [dict(c) for c in clips]
 
