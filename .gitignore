@@ -1,11 +1,10 @@
-knowledge_video_results
-results
-command.txt
-kokoro-main/
-generated_video_content/
-img/
+# Python（harness 引擎）
 **/__pycache__/
-tmp/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 
 # dsh plugin monorepo
 node_modules/
@@ -14,7 +13,6 @@ packages/**/lib/
 .turbo/
 *.tsbuildinfo
 
-Wan2GP-main/
-index-tts-main/
-Wan2GP-v6.3/
+# 冒烟与本地产物
 smoke/
+tmp/

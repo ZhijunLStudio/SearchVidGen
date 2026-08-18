@@ -1,7 +1,11 @@
-# VidHarness —— 面向未来的视频生成 Harness
+# VidHarness —— 视频生成执行引擎 + 实验评测 Harness
 
-> SearchVidGen v2 的核心。不是"又一个一键出片工具"，而是一套**视频生成流水线的实验与评测 Harness**。
-> 对标 LLM 生态的 `lm-evaluation-harness`：适配器是更新单元，任务是评测目标，实验产出可复现证据。
+> SearchVidGen v3 的两层之一：**产品面**在 DeepSeek Harness 插件家族
+> （仓库根目录 `packages/`：dsh-video / dsh-video-provider / dsh-video-tool
+> + presets/video「视频生成模式」），**本目录是执行引擎与实验评测层**——
+> 不是"又一个一键出片工具"，而是对标 LLM 生态 `lm-evaluation-harness` 的
+> 视频生成实验 Harness：适配器是更新单元，任务是评测目标，实验产出可复现证据。
+> TS 插件经 `vh gen-single --json` 子进程契约驱动本引擎（见 cli.py）。
 
 ## 快速上手（5 分钟）
 
@@ -159,8 +163,13 @@ harness/vidharness/
    检测）+ --run 执行；四变体 check 任务全部 ✅ 一致（E27 收尾）
 15. ✅ leaderboard 页面化（8-16）：vh leaderboard --all 导出全部任务 +
    index.html 总览（每任务最新 run/混用裁判警告/校准摘要）
-12. ⏳ H3 API 适配器（2K 完整流程）+ 本地/API 对比实验
-13. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
+12. ✅ H3 API 适配器（/v2/video_generation 提交+查询+上传，成本声明单一正源）；
+    本地/API 对比实验仍缺 MINIMAX_API_KEY
+13. ✅ 插件化轮（8-18）：`vh gen-single --json` 子进程契约（dsh-video-provider
+    local 后端；stdout 单行 JSON、ffmpeg_dir、成本结算正源 total_cost_usd_all）、
+    SegmentDirector judge 可选、single 计划带 duration；契约测试 5 例；
+    真实冒烟 TS→vh→H3 ref2va int8（GPU 2）通过
+14. 未来：多模型基准对比（JoyAI-Echo/MOVA/未来模型）、公开 leaderboard、任务库扩展
 
 ## 环境踩坑记录（H3 本地部署，2026-08-14 实测）
 

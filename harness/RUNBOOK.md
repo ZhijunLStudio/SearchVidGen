@@ -149,4 +149,6 @@ config.yaml（有效配置快照）+ artifacts/（产物，.meta.json 含完整�
 - H3 单次 5-15s（120-360 帧，17n+5）；ref2va int8 单卡建议 ≤8s
 - 共享服务器负载高时生成显著变慢（36s→125s/步）
 - DeepSeek V4 API 不支持图像输入 → 图像/视频评测必须走本地裁判
-- ffmpeg 在 torch 环境 bin 下，跑 funasr/保存视频需 PATH 包含
+- ffmpeg 在 torch 环境 bin 下，跑 funasr/保存视频需 PATH 包含；
+  经 `vh gen-single` 契约调用时用 spec.ffmpeg_dir（TS 配置 ffmpegDir）
+  把该目录注入引擎 PATH（h3int8 等模型环境不含 ffmpeg）

@@ -1,5 +1,11 @@
 # 范式对照：deepseek-harness → VidHarness
 
+> **2026-08-18 v3 定位更新**：SearchVidGen 的产品面已改为 dsh 原生插件家族
+> （仓库根 `packages/` + presets/video「视频生成模式」），VidHarness 不再
+> 自建 harness，而是执行引擎 + 实验评测层。本表记录的"落地"是引擎内部的
+> 机制取舍；插件侧的对应机制（ctx.video 注册表/能力路由/结算归消费者/
+> ctx.jobs 长任务）见仓库根 `docs/architecture-v3.md`。
+
 本文件是 VidHarness 与 [deepseek-harness](
 /data/lizhijun/work/Harness/deepseek-harness) 范式对齐的**可审查映射**：
 每条 DSH 原则 → 本仓库落地（文件/机制）→ 验证证据（E 系列实验 / 测试）。

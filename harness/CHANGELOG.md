@@ -1,8 +1,37 @@
 # Changelog
 
+VidHarness 0.3.0（2026-08-18）—— dsh 插件化轮：SearchVidGen v3 的执行引擎。
+完整决策记录见 `.agents/notes/`（47 篇 Agent Note），实验证据见
+`README.md` E1-E46，范式对照见 `docs/paradigm.md`（含 v3 定位更新），
+插件侧架构见仓库根 `docs/architecture-v3.md`。
+
+## v0.3.0（2026-08-18）
+
+### 新增
+
+- `vh gen-single --json` 子进程契约：dsh-video-provider 的 local 后端入口
+  （stdout 单行 JSON、进度走 stderr、失败非零退出）；规格支持
+  text/refs/duration/ratio/seed/generator/judge/retry/ffmpeg_dir/out；
+  结果含 video/judge/costUsd/elapsedS/localGpuHours/runDir
+- `spec.ffmpeg_dir`：把 ffmpeg 所在目录 prepend 进引擎 PATH（h3int8 等
+  模型环境不含 ffmpeg；真实冒烟首跑暴露的缺口，契约测试锁定）
+- SegmentDirector 的 judge 配置可选（无裁判规格时不装配；run_with_judge
+  原生容忍 None）；single 任务计划支持 context.duration
+- 契约测试 tests/test_gen_single_contract.py（5 例，mock 生成器 + 真实 ffmpeg）
+
+### 修复
+
+- gen-single 成本字段读错源：costUsd 原读 total_cost_usd（只含 API 声明，
+  本地恒 0）→ 改读 finalize 结算正源 total_cost_usd_all（本地 GPU 卡时折算）
+
+### 证据
+
+- 真实冒烟：TS LocalVideoProvider → vh gen-single → H3 ref2va int8（GPU 2）
+  → 成片 5.2s/24fps/1344×768/原生音轨；947s，$0.316；产物事实复检全过
+
+## v0.2.1（2026-08-16 晚）
+
 VidHarness 0.2.1（2026-08-16 晚）—— 0.2.0 后的持续优化（rounds 31-52）。
-完整决策记录见 `.agents/notes/`（46 篇 Agent Note：45 implemented + 1 proposed），实验证据见
-`README.md` E1-E46，范式对照见 `docs/paradigm.md`。
 
 ## v0.2.1（2026-08-16 晚）
 
